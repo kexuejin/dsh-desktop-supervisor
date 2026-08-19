@@ -1,0 +1,9 @@
+node_modules/
+lib/
+*.tsbuildinfo
+.pnpm-store/
+.cache/
+dist/
+app/src-tauri/gen/
+app/src-tauri/target/
+.DS_Store

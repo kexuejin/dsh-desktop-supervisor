@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo"
+  },
+  "files": [
+    "src/client/index.ts",
+    "src/client/locales.ts",
+    "src/client/SupervisorSettingsTab.tsx",
+    "src/css-modules.d.ts",
+    "src/dsh-client-shims.d.ts",
+    "src/types.ts"
+  ]
+}

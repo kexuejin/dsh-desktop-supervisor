@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-08-19-dsh-desktop-supervisor-recovery-layer.md
+2026-08-19-dsh-desktop-supervisor-recovery-layer.md: 7a7b0e3867bdf3057b60a2b327d66ad0ad5e2d62
+2026-08-19-dsh-desktop-supervisor-recovery-layer.zh.md: 8aa6e228f00c26ce587a52fc70f934294c17b372

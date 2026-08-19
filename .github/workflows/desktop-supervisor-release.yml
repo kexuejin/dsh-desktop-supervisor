@@ -1,0 +1,147 @@
+name: Desktop Supervisor Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: GitHub Release tag to attach assets to.
+        required: true
+        type: string
+      draft:
+        description: Create or update the release as a draft.
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-supervisor-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  DSH_TELEMETRY_DISABLED: '1'
+  APP_DIR: app
+  RELEASE_DIR: dist/desktop-supervisor
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macos-arm64
+            os: macos-15
+            platform: darwin
+            arch: arm64
+          - label: macos-x64
+            os: macos-13
+            platform: darwin
+            arch: x64
+          - label: linux-x64
+            os: ubuntu-24.04
+            platform: linux
+            arch: x64
+          - label: windows-x64
+            os: windows-2025
+            platform: win32
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux Tauri dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop supervisor
+        run: pnpm --dir ${{ env.APP_DIR }} run build
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          mkdir -p "${{ env.RELEASE_DIR }}"
+          find "${{ env.APP_DIR }}/src-tauri/target/release/bundle" -type f \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o -name '*.exe' \) -print -exec cp {} "${{ env.RELEASE_DIR }}/" \;
+          cd "${{ env.RELEASE_DIR }}"
+          for file in *; do
+            [ -f "$file" ] || continue
+            mv "$file" "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-${file}"
+          done
+        if: matrix.platform != 'win32'
+
+      - name: Collect Windows release assets
+        if: matrix.platform == 'win32'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force $env:RELEASE_DIR | Out-Null
+          Get-ChildItem "$env:APP_DIR/src-tauri/target/release/bundle" -Recurse -File |
+            Where-Object { $_.Extension -in '.msi', '.exe' } |
+            ForEach-Object { Copy-Item $_.FullName (Join-Path $env:RELEASE_DIR "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-$($_.Name)") }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-supervisor-${{ matrix.label }}
+          path: ${{ env.RELEASE_DIR }}/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish release assets
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-supervisor-*
+          path: dist/desktop-supervisor/assets
+          merge-multiple: true
+
+      - name: Generate manifest and checksums
+        run: |
+          mkdir -p dist/desktop-supervisor/release
+          cd dist/desktop-supervisor/assets
+          sha256sum * > ../release/SHA256SUMS
+          node "$GITHUB_WORKSPACE/scripts/desktop-supervisor-manifest.mjs" \
+            --tag '${{ inputs.tag }}' \
+            --base-url 'https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}' \
+            --assets-dir . \
+            --checksums ../release/SHA256SUMS \
+            --out ../release/manifest.json
+          cp * ../release/
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag='${{ inputs.tag }}'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/desktop-supervisor/release/* --clobber
+          else
+            args=("$tag" dist/desktop-supervisor/release/* --title "$tag")
+            if [ '${{ inputs.draft }}' = 'true' ]; then args+=(--draft); fi
+            gh release create "${args[@]}"
+          fi

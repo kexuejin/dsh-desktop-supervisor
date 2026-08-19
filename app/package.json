@@ -1,0 +1,25 @@
+{
+  "name": "dsh-desktop-supervisor",
+  "description": "Optional Tauri tray supervisor for DSH startup and recovery",
+  "version": "0.1.0-dev.1",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kexuejin/dsh-desktop-supervisor.git"
+  },
+  "type": "module",
+  "files": [
+    "src-tauri"
+  ],
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.4"
+  }
+}

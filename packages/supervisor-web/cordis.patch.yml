@@ -1,0 +1,4 @@
+# dsh bundle patch: inserts the optional desktop supervisor Web companion.
+- insert:
+    - id: dsh-supervisor-web
+      name: '@deepseek-ai/dsh-supervisor-web'
