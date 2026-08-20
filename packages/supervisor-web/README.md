@@ -2,9 +2,9 @@
 
 English | [中文](README.zh.md)
 
-The desktop-supervisor Web companion adds an install and pairing card for the optional DSH Desktop Supervisor. It is installed through `dshmarket`; `dshmarket` remains responsible for plugin installation, updates, hot mounting, hot restart, validation, and rollback.
+The desktop-supervisor Web companion adds a top-level Settings page for installing and pairing the optional DSH Desktop Supervisor. During local development it can be installed directly as a profile `file:` dependency; when distributed through the plugin marketplace, `dshmarket` remains responsible for plugin installation, updates, hot mounting, hot restart, validation, and rollback.
 
-The Host half serves `/dsh-supervisor/*` loopback routes that read a GitHub Release manifest, select the current platform artifact, download it under `$DSH_HOME/downloads/desktop-supervisor/`, verify SHA-256, open the verified file or directory when the platform can do so, read `$DSH_HOME/supervisor/control.json`, and forward pairing to the local supervisor with the descriptor token. The Client half registers the P0 entry at Settings → Plugins → Desktop launch; that page shows manifest, download, unsigned macOS guidance, and pairing status. When `dshmarket` exposes a plugin-detail action slot, the same card should move there so install/start lives beside the marketplace package.
+The Host half serves `/dsh-supervisor/*` loopback routes that read a GitHub Release manifest, select the current platform artifact, download it under `$DSH_HOME/downloads/desktop-supervisor/`, verify SHA-256, open the verified file or directory when the platform can do so, read `$DSH_HOME/supervisor/control.json`, and forward pairing to the local supervisor with the descriptor token. The Client half registers the P0 entry at Settings → Desktop launch. Before the desktop tray app is installed, the page still supports manifest lookup, platform artifact selection, download, checksum verification, opening a verified download, and status refresh; restart, Safe Mode, startup recovery, and local process logs require the tray app to be running.
 
 ## Model Experience
 

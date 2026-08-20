@@ -1,19 +1,19 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { PropsLocale, PropsRuntime, InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SupervisorStatusSnapshot } from '../types.ts'
-import css from './SupervisorSettingsTab.module.css'
+import css from './SupervisorSettingsSection.module.css'
 
-export interface SupervisorSettingsTabInjected {
+export interface SupervisorSettingsSectionInjected {
   status: () => Promise<SupervisorStatusSnapshot>
   download: () => Promise<unknown>
   openDownload: () => Promise<unknown>
   connect: () => Promise<unknown>
 }
 
-export type SupervisorSettingsTabProps =
-  PropsRuntime<'settings.plugins.tab'>
+export type SupervisorSettingsSectionProps =
+  PropsRuntime<'settings.section'>
   & PropsLocale<'supervisor.web'>
-  & InjectFace<SupervisorSettingsTabInjected>
+  & InjectFace<SupervisorSettingsSectionInjected>
 
 type ViewState =
   | { status: 'loading' }
@@ -26,7 +26,7 @@ function artifactLabel(snapshot: SupervisorStatusSnapshot): string {
   return `${artifact.platform}/${artifact.arch} ${artifact.file}`
 }
 
-function signingLabel(snapshot: SupervisorStatusSnapshot, t: SupervisorSettingsTabProps['t']): string {
+function signingLabel(snapshot: SupervisorStatusSnapshot, t: SupervisorSettingsSectionProps['t']): string {
   const artifact = snapshot.selected
   if (artifact === null) return t('noArtifact')
   if (artifact.signed && artifact.notarized) return t('signed')
@@ -37,7 +37,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-export function SupervisorSettingsTab(props: SupervisorSettingsTabProps): ReactNode {
+export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps): ReactNode {
   const { status, download, openDownload, connect, t } = props
   const [state, setState] = useState<ViewState>({ status: 'loading' })
   const [busy, setBusy] = useState(false)
@@ -103,6 +103,11 @@ export function SupervisorSettingsTab(props: SupervisorSettingsTabProps): ReactN
         <span className={css.badge} data-state={snapshot.connected ? 'connected' : 'missing'}>
           {snapshot.connected ? t('connectedBadge') : t('missingBadge')}
         </span>
+      </div>
+
+      <div className={css.guide}>
+        <h4>{t('availableWithoutClient')}</h4>
+        <p>{t('availableWithoutClientCopy')}</p>
       </div>
 
       <dl className={css.details}>

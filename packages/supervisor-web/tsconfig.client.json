@@ -8,7 +8,7 @@
   "files": [
     "src/client/index.ts",
     "src/client/locales.ts",
-    "src/client/SupervisorSettingsTab.tsx",
+    "src/client/SupervisorSettingsSection.tsx",
     "src/css-modules.d.ts",
     "src/dsh-client-shims.d.ts",
     "src/types.ts"

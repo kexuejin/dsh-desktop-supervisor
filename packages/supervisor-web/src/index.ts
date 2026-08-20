@@ -61,6 +61,10 @@ function dshHomePath(...segments: string[]): string {
   return join(home, ...segments)
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 function sendJson(response: ServerResponse, status: number, payload: unknown): void {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   response.end(JSON.stringify(payload))
@@ -148,7 +152,6 @@ function parseManifest(text: string): SupervisorManifest {
 
 async function readManifest(url: string): Promise<SupervisorManifest> {
   if (manifestCache !== null) return manifestCache
-  downloadSnapshot = { ...downloadSnapshot, state: 'fetchingManifest', error: null }
   const manifest = parseManifest(await requestText(url))
   manifestCache = manifest
   return manifest
@@ -169,6 +172,7 @@ async function sha256(path: string): Promise<string> {
 }
 
 async function downloadSelected(config: Required<Config>): Promise<DownloadSnapshot> {
+  downloadSnapshot = { ...initialDownload, state: 'fetchingManifest' }
   const manifest = await readManifest(config.manifestUrl)
   const artifact = selectArtifact(manifest)
   if (artifact === null) throw new Error(`no desktop supervisor artifact for ${process.platform}/${process.arch}`)
@@ -215,10 +219,12 @@ async function statusSnapshot(config: Required<Config>): Promise<SupervisorStatu
   const control = await readControl()
   let manifest: SupervisorManifest | null = null
   let selected: SupervisorArtifact | null = null
+  let manifestError: string | null = null
   try {
     manifest = await readManifest(config.manifestUrl)
     selected = selectArtifact(manifest)
-  } catch {
+  } catch (error) {
+    manifestError = errorMessage(error)
     manifest = null
     selected = null
   }
@@ -228,7 +234,7 @@ async function statusSnapshot(config: Required<Config>): Promise<SupervisorStatu
     download: downloadSnapshot,
     control,
     connected: control === null ? false : await supervisorHealth(control),
-    error: null,
+    error: manifestError,
   }
 }
 
@@ -258,7 +264,12 @@ async function route(request: IncomingMessage, response: ServerResponse, config:
       return
     }
     if (pathname === '/dsh-supervisor/download' && request.method === 'POST') {
-      sendJson(response, 200, await downloadSelected(config))
+      try {
+        sendJson(response, 200, await downloadSelected(config))
+      } catch (error) {
+        downloadSnapshot = { ...downloadSnapshot, state: 'failed', error: errorMessage(error) }
+        sendJson(response, 500, { error: downloadSnapshot.error })
+      }
       return
     }
     if (pathname === '/dsh-supervisor/open-download' && request.method === 'POST') {
@@ -283,8 +294,7 @@ async function route(request: IncomingMessage, response: ServerResponse, config:
     response.writeHead(404)
     response.end()
   } catch (error) {
-    downloadSnapshot = { ...downloadSnapshot, state: 'failed', error: error instanceof Error ? error.message : String(error) }
-    sendJson(response, 500, { error: downloadSnapshot.error })
+    sendJson(response, 500, { error: errorMessage(error) })
   }
 }
 

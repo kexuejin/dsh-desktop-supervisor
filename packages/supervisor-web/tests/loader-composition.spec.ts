@@ -154,7 +154,13 @@ describe('supervisor-web routes', () => {
 
     const status = await requestJson(port, '/dsh-supervisor/status')
     expect(status.status).toBe(200)
-    expect(status.value).toMatchObject({ connected: false, manifest: null, selected: null })
+    expect(status.value).toMatchObject({
+      connected: false,
+      manifest: null,
+      selected: null,
+      download: { state: 'idle' },
+      error: expect.stringContaining('127.0.0.1:9'),
+    })
 
     const manifest = await requestJson(port, '/dsh-supervisor/manifest')
     expect(manifest.status).toBe(500)
