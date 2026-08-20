@@ -159,8 +159,9 @@ jobs:
           tag="$RELEASE_TAG"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" dist/desktop-supervisor/release/* --clobber
+            gh release edit "$tag" --title "$tag" --target "$GITHUB_SHA" --draft="$RELEASE_DRAFT" --verify-tag
           else
-            args=("$tag" dist/desktop-supervisor/release/* --title "$tag")
+            args=("$tag" dist/desktop-supervisor/release/* --title "$tag" --target "$GITHUB_SHA" --verify-tag)
             if [ "$RELEASE_DRAFT" = 'true' ]; then args+=(--draft); fi
             gh release create "${args[@]}"
           fi
