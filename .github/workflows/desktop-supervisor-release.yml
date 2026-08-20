@@ -11,13 +11,16 @@ on:
         description: Create or update the release as a draft.
         required: true
         type: boolean
-        default: true
+        default: false
+  push:
+    tags:
+      - 'dsh-desktop-supervisor-v*'
 
 permissions:
   contents: write
 
 concurrency:
-  group: desktop-supervisor-release-${{ inputs.tag }}
+  group: desktop-supervisor-release-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -25,6 +28,8 @@ env:
   DSH_TELEMETRY_DISABLED: '1'
   APP_DIR: app
   RELEASE_DIR: dist/desktop-supervisor
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  RELEASE_DRAFT: ${{ github.event_name == 'workflow_dispatch' && inputs.draft == true }}
 
 jobs:
   build:
@@ -51,7 +56,7 @@ jobs:
             arch: x64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
@@ -59,7 +64,7 @@ jobs:
         with:
           dest: ${{ runner.temp }}/setup-pnpm
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
 
@@ -85,7 +90,7 @@ jobs:
           cd "${{ env.RELEASE_DIR }}"
           for file in *; do
             [ -f "$file" ] || continue
-            mv "$file" "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-${file}"
+            mv "$file" "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-$file"
           done
         if: matrix.platform != 'win32'
 
@@ -110,7 +115,7 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
@@ -126,8 +131,8 @@ jobs:
           cd dist/desktop-supervisor/assets
           sha256sum * > ../release/SHA256SUMS
           node "$GITHUB_WORKSPACE/scripts/desktop-supervisor-manifest.mjs" \
-            --tag '${{ inputs.tag }}' \
-            --base-url 'https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}' \
+            --tag "$RELEASE_TAG" \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG" \
             --assets-dir . \
             --checksums ../release/SHA256SUMS \
             --out ../release/manifest.json
@@ -137,11 +142,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag='${{ inputs.tag }}'
+          tag="$RELEASE_TAG"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" dist/desktop-supervisor/release/* --clobber
           else
             args=("$tag" dist/desktop-supervisor/release/* --title "$tag")
-            if [ '${{ inputs.draft }}' = 'true' ]; then args+=(--draft); fi
+            if [ "$RELEASE_DRAFT" = 'true' ]; then args+=(--draft); fi
             gh release create "${args[@]}"
           fi
