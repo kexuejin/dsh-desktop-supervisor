@@ -91,7 +91,8 @@ jobs:
           cd "${{ env.RELEASE_DIR }}"
           for file in *; do
             [ -f "$file" ] || continue
-            mv "$file" "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-$file"
+            safe=${file// /.}
+            mv "$file" "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-$safe"
           done
         if: matrix.platform != 'win32'
 
@@ -102,12 +103,18 @@ jobs:
           New-Item -ItemType Directory -Force $env:RELEASE_DIR | Out-Null
           $releaseRoot = "$env:APP_DIR/src-tauri/target/release"
           Get-ChildItem $releaseRoot -File -Filter 'dsh-desktop-supervisor.exe' |
-            ForEach-Object { Copy-Item $_.FullName (Join-Path $env:RELEASE_DIR "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-$($_.Name)") }
+            ForEach-Object {
+              $safeName = $_.Name.Replace(' ', '.')
+              Copy-Item $_.FullName (Join-Path $env:RELEASE_DIR "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-$safeName")
+            }
           $bundleRoot = Join-Path $releaseRoot 'bundle'
           if (Test-Path $bundleRoot) {
             Get-ChildItem $bundleRoot -Recurse -File |
               Where-Object { $_.Extension -in '.msi', '.exe' } |
-              ForEach-Object { Copy-Item $_.FullName (Join-Path $env:RELEASE_DIR "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-$($_.Name)") }
+              ForEach-Object {
+                $safeName = $_.Name.Replace(' ', '.')
+                Copy-Item $_.FullName (Join-Path $env:RELEASE_DIR "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-$safeName")
+              }
           }
 
       - uses: actions/upload-artifact@v4
