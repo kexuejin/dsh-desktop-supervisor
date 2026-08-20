@@ -79,7 +79,7 @@ export interface DownloadSnapshot {
   error: string | null
 }
 
-/** Complete status payload returned to the Settings tab. */
+/** Complete status payload returned to the Desktop launch page. */
 export interface SupervisorStatusSnapshot {
   /** Last fetched release manifest, when available. */
   manifest: SupervisorManifest | null

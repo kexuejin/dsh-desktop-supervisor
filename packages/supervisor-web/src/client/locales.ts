@@ -1,6 +1,6 @@
-/** Chinese copy for the desktop supervisor Settings tab. */
+/** Chinese copy for the desktop launch entry. */
 export const zh = {
-  tab: '桌面托盘',
+  tab: '桌面启动',
   loading: '正在读取 Desktop Supervisor 状态…',
   error: '无法读取 Desktop Supervisor 状态',
   retry: '重试',
@@ -28,12 +28,12 @@ export const zh = {
   refresh: '刷新状态',
 } satisfies Record<string, string>
 
-/** Locale keys used by the desktop supervisor Settings tab. */
+/** Locale keys used by the desktop launch entry. */
 export type SupervisorLocaleKey = keyof typeof zh
 
-/** English copy for the desktop supervisor Settings tab. */
+/** English copy for the desktop launch entry. */
 export const en = {
-  tab: 'Desktop tray',
+  tab: 'Desktop launch',
   loading: 'Reading Desktop Supervisor status…',
   error: 'Cannot read Desktop Supervisor status',
   retry: 'Retry',

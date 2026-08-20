@@ -10,7 +10,7 @@ Third-party DSH plugins can fail during installation, activation, or the next We
 
 ## Proposal
 
-Add a desktop supervisor recovery layer with two deliverables. `packages/supervisor-web` installed through `dshmarket`; it guides desktop installation, verifies GitHub Release artifacts, reads local supervisor status, and pairs with the desktop app. `dsh-desktop-supervisor` is a Tauri app that owns tray and process-recovery capabilities outside the DSH process.
+Add a desktop supervisor recovery layer with two deliverables. `packages/supervisor-web` is installed through `dshmarket`; it guides desktop installation, verifies GitHub Release artifacts, reads local supervisor status, and pairs with the desktop app. Its P0 DSH entry is Settings → Plugins → Desktop launch. When `dshmarket` exposes a plugin-detail action slot, the install/start card should move beside the marketplace package. `dsh-desktop-supervisor` is a Tauri app that owns tray and process-recovery capabilities outside the DSH process.
 
 `dshmarket` remains the owner of plugin install, update, uninstall, hot mount, hot restart, validation, and rollback. The supervisor does not replace those flows. When desktop hosting is present, it should satisfy the existing desktop-host contract that makes `dshmarket` disable in-process self-restart and defer process restarts to the host.
 
@@ -34,7 +34,7 @@ The desktop app writes a loopback control descriptor under `$DSH_HOME/supervisor
 
 ## Acceptance criteria
 
-- Web companion package is installable as a DSH plugin and contributes a Settings tab without adding model-facing tools.
+- Web companion package is installable as a DSH plugin and contributes Settings → Plugins → Desktop launch without adding model-facing tools.
 - Web companion fetches a GitHub Release manifest, selects the current platform artifact, downloads it to Harness home, verifies SHA-256, and opens only a verified download.
 - macOS unsigned artifacts are labeled as Developer Mode and guide the manual Open/Open Anyway flow without recommending global Gatekeeper disablement.
 - Desktop supervisor writes `$DSH_HOME/supervisor/control.json`, serves loopback health/status/pair routes, and exposes tray actions without taking over `dshmarket` plugin lifecycle duties.

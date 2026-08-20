@@ -10,7 +10,7 @@ Status: proposed
 
 ## Proposal
 
-新增 desktop supervisor recovery layer，包含两个交付物。`packages/supervisor-web` 通过 `dshmarket` 安装，用于引导桌面安装、校验 GitHub Release 制品、读取本地 supervisor 状态，并与桌面应用配对。`dsh-desktop-supervisor` 是一个 Tauri 应用，负责 DSH 进程外的托盘和进程恢复能力。
+新增 desktop supervisor recovery layer，包含两个交付物。`packages/supervisor-web` 通过 `dshmarket` 安装，用于引导桌面安装、校验 GitHub Release 制品、读取本地 supervisor 状态，并与桌面应用配对。它的 P0 DSH 入口是“设置 → 插件 → 桌面启动”。等 `dshmarket` 暴露插件详情 action slot 后，安装/启动卡片应迁到 marketplace package 旁边。`dsh-desktop-supervisor` 是一个 Tauri 应用，负责 DSH 进程外的托盘和进程恢复能力。
 
 `dshmarket` 仍然拥有插件安装、更新、卸载、hot mount、hot restart、验证和回滚。supervisor 不替代这些流程。当桌面宿主存在时，它应满足已有 desktop-host 约定，使 `dshmarket` 禁用进程内自重启，并把进程重启交给宿主。
 
@@ -34,7 +34,7 @@ Status: proposed
 
 ## Acceptance criteria
 
-- Web companion package is installable as a DSH plugin and contributes a Settings tab without adding model-facing tools.
+- Web companion package is installable as a DSH plugin and contributes Settings → Plugins → Desktop launch without adding model-facing tools.
 - Web companion fetches a GitHub Release manifest, selects the current platform artifact, downloads it to Harness home, verifies SHA-256, and opens only a verified download.
 - macOS unsigned artifacts are labeled as Developer Mode and guide the manual Open/Open Anyway flow without recommending global Gatekeeper disablement.
 - Desktop supervisor writes `$DSH_HOME/supervisor/control.json`, serves loopback health/status/pair routes, and exposes tray actions without taking over `dshmarket` plugin lifecycle duties.

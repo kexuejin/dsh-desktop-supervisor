@@ -10,7 +10,7 @@ The desktop supervisor adds a system-owned recovery layer around `dsh web` witho
 
 ## Components
 
-- `packages/supervisor-web`: a DSH Web plugin installed through `dshmarket`. Its Host half downloads and verifies desktop artifacts, probes a local supervisor, and exposes status routes. Its Client half contributes a Settings tab with install guidance and pairing status.
+- `packages/supervisor-web`: a DSH Web plugin installed through `dshmarket`. Its Host half downloads and verifies desktop artifacts, probes a local supervisor, and exposes status routes. Its Client half contributes the P0 entry at Settings → Plugins → Desktop launch with install guidance and pairing status; once `dshmarket` exposes a plugin-detail action slot, that card should move beside the marketplace package.
 - `dsh-desktop-supervisor`: a Tauri desktop app built by GitHub Actions. The first slice starts a tray app, writes a local control descriptor, and serves `/health`, `/status`, and `/pair` on loopback.
 - GitHub Releases: the desktop app distribution source. Release assets include `manifest.json`, `SHA256SUMS`, and per-platform packages. The Web plugin consumes the manifest instead of embedding platform installers.
 

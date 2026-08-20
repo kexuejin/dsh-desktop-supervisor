@@ -10,7 +10,7 @@ Desktop supervisor 在 `dsh web` 外增加一层系统级恢复能力，但不�
 
 ## Components
 
-- `packages/supervisor-web`: 通过 `dshmarket` 安装的 DSH Web 插件。Host 半侧下载并校验桌面制品、探测本地 supervisor，并提供状态路由。Client 半侧贡献 Settings tab，展示安装引导和配对状态。
+- `packages/supervisor-web`: 通过 `dshmarket` 安装的 DSH Web 插件。Host 半侧下载并校验桌面制品、探测本地 supervisor，并提供状态路由。Client 半侧把 P0 入口放到“设置 → 插件 → 桌面启动”，提供安装引导和配对状态；等 `dshmarket` 暴露插件详情 action slot 后，这张卡片应迁到 marketplace package 旁边。
 - `dsh-desktop-supervisor`: 由 GitHub Actions 构建的 Tauri 桌面应用。首个 slice 启动托盘应用，写入本地 control descriptor，并在 loopback 上提供 `/health`、`/status` 和 `/pair`。
 - GitHub Releases: 桌面应用分发源。Release assets 包含 `manifest.json`、`SHA256SUMS` 和各平台安装包。Web 插件消费 manifest，不内嵌平台安装包。
 

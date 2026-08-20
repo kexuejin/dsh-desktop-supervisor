@@ -4,7 +4,7 @@
 
 `dsh-supervisor-web` 是可选 DSH Desktop Supervisor 的 Web 伴随包。它通过 `dshmarket` 安装；`dshmarket` 仍然负责插件安装、更新、hot mount、hot restart、验证和回滚。
 
-Host 半侧提供 `/dsh-supervisor/*` 本地路由：读取 GitHub Release manifest、选择当前平台制品、下载到 `$DSH_HOME/downloads/desktop-supervisor/`、校验 SHA-256、只打开已校验的文件或目录、读取 `$DSH_HOME/supervisor/control.json`，并用 descriptor token 转发本机 supervisor pairing。Client 半侧注册一个 Settings tab，展示 manifest、下载状态、未签名 macOS 引导和配对状态。
+Host 半侧提供 `/dsh-supervisor/*` 本地路由：读取 GitHub Release manifest、选择当前平台制品、下载到 `$DSH_HOME/downloads/desktop-supervisor/`、校验 SHA-256、只打开已校验的文件或目录、读取 `$DSH_HOME/supervisor/control.json`，并用 descriptor token 转发本机 supervisor pairing。Client 半侧把 P0 入口注册到“设置 → 插件 → 桌面启动”；该页面展示 manifest、下载状态、未签名 macOS 引导和配对状态。等 `dshmarket` 暴露插件详情 action slot 后，这张卡片应迁到市场插件详情页，让安装/启动入口贴着 marketplace package。
 
 ## Model Experience
 
