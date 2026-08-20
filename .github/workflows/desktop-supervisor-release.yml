@@ -76,7 +76,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build desktop supervisor
+        if: matrix.platform != 'win32'
         run: pnpm --dir ${{ env.APP_DIR }} run build
+
+      - name: Build Windows portable executable
+        if: matrix.platform == 'win32'
+        run: cargo build --manifest-path ${{ env.APP_DIR }}/src-tauri/Cargo.toml --release
 
       - name: Collect release assets
         shell: bash
@@ -95,9 +100,15 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force $env:RELEASE_DIR | Out-Null
-          Get-ChildItem "$env:APP_DIR/src-tauri/target/release/bundle" -Recurse -File |
-            Where-Object { $_.Extension -in '.msi', '.exe' } |
+          $releaseRoot = "$env:APP_DIR/src-tauri/target/release"
+          Get-ChildItem $releaseRoot -File -Filter 'dsh-desktop-supervisor.exe' |
             ForEach-Object { Copy-Item $_.FullName (Join-Path $env:RELEASE_DIR "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-$($_.Name)") }
+          $bundleRoot = Join-Path $releaseRoot 'bundle'
+          if (Test-Path $bundleRoot) {
+            Get-ChildItem $bundleRoot -Recurse -File |
+              Where-Object { $_.Extension -in '.msi', '.exe' } |
+              ForEach-Object { Copy-Item $_.FullName (Join-Path $env:RELEASE_DIR "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-$($_.Name)") }
+          }
 
       - uses: actions/upload-artifact@v4
         with:
