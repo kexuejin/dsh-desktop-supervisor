@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as SupervisorWeb from '../src/index.ts'
 
@@ -48,7 +49,7 @@ afterEach(async () => {
 })
 
 /** Boot the companion against a minimal webServer service. */
-async function loadCompanion(manifestUrl: string): Promise<LoadedCompanion> {
+async function loadCompanion(manifestUrl: string, localArtifactPath = ''): Promise<LoadedCompanion> {
   root = await mkdtemp(join(tmpdir(), 'dsh-supervisor-web-loader-'))
   process.env.DSH_HOME = root
   const routes: RegisteredRoute[] = []
@@ -85,7 +86,7 @@ async function loadCompanion(manifestUrl: string): Promise<LoadedCompanion> {
       if (disposer !== undefined) disposers.push(disposer)
     },
   }
-  SupervisorWeb.apply(ctx, { manifestUrl })
+  SupervisorWeb.apply(ctx, { manifestUrl, localArtifactPath })
 
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('server address missing')
@@ -172,6 +173,25 @@ describe('supervisor-web routes', () => {
     await loaded.dispose()
     loaded = undefined
     await expect(fetch(`http://127.0.0.1:${String(port)}/dsh-supervisor/status`)).rejects.toThrow()
+  })
+
+  it('uses a configured local artifact when the remote manifest is unavailable', { timeout: 60_000 }, async () => {
+    const artifactDir = await mkdtemp(join(tmpdir(), 'dsh-supervisor-local-artifact-'))
+    const artifactPath = join(artifactDir, 'DSH Desktop Supervisor_0.1.0-dev.1_aarch64.dmg')
+    await writeFile(artifactPath, 'local artifact bytes')
+    loaded = await loadCompanion('http://127.0.0.1:9/manifest.json', artifactPath)
+    const port = loaded.port
+
+    const status = await requestJson(port, '/dsh-supervisor/status')
+    expect(status.value).toMatchObject({
+      manifest: { version: '0.1.0-dev.1', channel: 'local-dev' },
+      selected: { url: pathToFileURL(artifactPath).toString(), kind: 'dmg' },
+      error: expect.stringContaining('127.0.0.1:9'),
+    })
+
+    const download = await requestJson(port, '/dsh-supervisor/download', { method: 'POST' })
+    expect(download.value).toMatchObject({ state: 'ready', path: artifactPath, verified: true })
+    await rm(artifactDir, { recursive: true, force: true })
   })
 
   it('pairs through the control descriptor token', { timeout: 60_000 }, async () => {

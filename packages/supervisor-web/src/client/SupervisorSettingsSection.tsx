@@ -26,6 +26,12 @@ function artifactLabel(snapshot: SupervisorStatusSnapshot): string {
   return `${artifact.platform}/${artifact.arch} ${artifact.file}`
 }
 
+function artifactSource(snapshot: SupervisorStatusSnapshot): string {
+  const artifact = snapshot.selected
+  if (artifact === null) return '—'
+  return artifact.url
+}
+
 function signingLabel(snapshot: SupervisorStatusSnapshot, t: SupervisorSettingsSectionProps['t']): string {
   const artifact = snapshot.selected
   if (artifact === null) return t('noArtifact')
@@ -92,6 +98,7 @@ export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps)
   const snapshot = state.snapshot
   const downloadReady = snapshot.download.verified && snapshot.download.path !== null
   const isUnsigned = snapshot.selected !== null && (!snapshot.selected.signed || !snapshot.selected.notarized)
+  const isLocalArtifact = snapshot.selected?.url.startsWith('file:') ?? false
 
   return (
     <div className={css.section}>
@@ -115,6 +122,8 @@ export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps)
         <div><dt>{t('artifact')}</dt><dd>{artifactLabel(snapshot)}</dd></div>
         <div><dt>{t('signing')}</dt><dd>{signingLabel(snapshot, t)}</dd></div>
         <div><dt>{t('downloadState')}</dt><dd>{snapshot.download.state}</dd></div>
+        <div><dt>{t('source')}</dt><dd>{artifactSource(snapshot)}</dd></div>
+        {snapshot.error !== null ? <div><dt>{t('manifestError')}</dt><dd>{snapshot.error}</dd></div> : null}
       </dl>
 
       {isUnsigned ? (
@@ -132,7 +141,7 @@ export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps)
 
       <div className={css.actions}>
         <button className={css.button} type="button" onClick={runDownload} disabled={busy || snapshot.selected === null}>
-          {t('download')}
+          {isLocalArtifact ? t('verifyLocal') : t('download')}
         </button>
         <button className={css.button} type="button" onClick={runOpen} disabled={busy || !downloadReady}>
           {t('openDownload')}

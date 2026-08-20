@@ -1,5 +1,6 @@
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { mkdir, readFile, stat } from 'node:fs/promises'
@@ -30,11 +31,14 @@ const MAX_REDIRECTS = 5
 export interface Config {
   /** GitHub Release manifest URL used by the installer card. */
   manifestUrl?: string
+  /** Optional local installer artifact used for development before public releases exist. */
+  localArtifactPath?: string
 }
 
 /** Schemastery validation for {@link Config}. */
 export const Config: z<Config> = z.object({
   manifestUrl: z.string().default(DEFAULT_MANIFEST_URL),
+  localArtifactPath: z.string().default(''),
 })
 
 const initialDownload: DownloadSnapshot = {
@@ -54,6 +58,12 @@ interface TextRequestOptions {
   method?: string
   headers?: Record<string, string>
   body?: string
+}
+
+interface InstallerSelection {
+  manifest: SupervisorManifest | null
+  selected: SupervisorArtifact | null
+  error: string | null
 }
 
 function dshHomePath(...segments: string[]): string {
@@ -157,8 +167,59 @@ async function readManifest(url: string): Promise<SupervisorManifest> {
   return manifest
 }
 
+function artifactKind(file: string): string {
+  return file.endsWith('.dmg') ? 'dmg'
+    : file.endsWith('.app.tar.gz') ? 'app-tar-gz'
+      : file.endsWith('.AppImage') ? 'appimage'
+        : file.endsWith('.deb') ? 'deb'
+          : file.endsWith('.rpm') ? 'rpm'
+            : file.endsWith('.msi') ? 'msi'
+              : file.endsWith('.exe') ? 'exe'
+                : 'archive'
+}
+
+function localVersion(file: string): string {
+  const match = /_(.+?)_(?:aarch64|x64|x86_64|arm64)\./u.exec(file)
+  return match?.[1] ?? 'local-dev'
+}
+
+async function localManifest(path: string | undefined): Promise<SupervisorManifest | null> {
+  if (path === undefined || path.length === 0) return null
+  await stat(path)
+  const file = basename(path)
+  const sha = await sha256(path)
+  return {
+    schema: 1,
+    app: 'dsh-desktop-supervisor',
+    version: localVersion(file),
+    channel: 'local-dev',
+    artifacts: [{
+      platform: process.platform,
+      arch: process.arch,
+      kind: artifactKind(file),
+      file,
+      url: pathToFileURL(path).toString(),
+      sha256: sha,
+      signed: false,
+      notarized: false,
+      installMode: process.platform === 'darwin' ? 'macos-developer-open' : 'manual-open',
+    }],
+  }
+}
+
 function selectArtifact(manifest: SupervisorManifest): SupervisorArtifact | null {
   return manifest.artifacts.find((artifact) => artifact.platform === process.platform && artifact.arch === process.arch) ?? null
+}
+
+async function installerSelection(config: Required<Config>): Promise<InstallerSelection> {
+  try {
+    const manifest = await readManifest(config.manifestUrl)
+    return { manifest, selected: selectArtifact(manifest), error: null }
+  } catch (error) {
+    const message = errorMessage(error)
+    const fallback = await localManifest(config.localArtifactPath)
+    return { manifest: fallback, selected: fallback === null ? null : selectArtifact(fallback), error: message }
+  }
 }
 
 async function sha256(path: string): Promise<string> {
@@ -173,9 +234,19 @@ async function sha256(path: string): Promise<string> {
 
 async function downloadSelected(config: Required<Config>): Promise<DownloadSnapshot> {
   downloadSnapshot = { ...initialDownload, state: 'fetchingManifest' }
-  const manifest = await readManifest(config.manifestUrl)
-  const artifact = selectArtifact(manifest)
+  const { manifest, selected, error } = await installerSelection(config)
+  if (manifest === null) throw new Error(error ?? 'no desktop supervisor manifest is available')
+  const artifact = selected
   if (artifact === null) throw new Error(`no desktop supervisor artifact for ${process.platform}/${process.arch}`)
+  const source = new URL(artifact.url)
+  if (source.protocol === 'file:') {
+    const path = fileURLToPath(source)
+    downloadSnapshot = { state: 'verifying', version: manifest.version, artifact: artifact.file, path, sha256: artifact.sha256, verified: false, error: null }
+    const actual = await sha256(path)
+    if (actual !== artifact.sha256) throw new Error(`SHA-256 mismatch for ${artifact.file}`)
+    downloadSnapshot = { ...downloadSnapshot, state: 'ready', verified: true }
+    return downloadSnapshot
+  }
   const directory = dshHomePath('downloads', 'desktop-supervisor', manifest.version)
   const path = join(directory, artifact.file)
   await mkdir(directory, { recursive: true })
@@ -183,9 +254,7 @@ async function downloadSelected(config: Required<Config>): Promise<DownloadSnaps
   await downloadFile(artifact.url, path)
   downloadSnapshot = { ...downloadSnapshot, state: 'verifying' }
   const actual = await sha256(path)
-  if (actual !== artifact.sha256) {
-    throw new Error(`SHA-256 mismatch for ${artifact.file}`)
-  }
+  if (actual !== artifact.sha256) throw new Error(`SHA-256 mismatch for ${artifact.file}`)
   downloadSnapshot = { ...downloadSnapshot, state: 'ready', verified: true }
   return downloadSnapshot
 }
@@ -217,24 +286,14 @@ async function supervisorHealth(control: SupervisorControlDescriptor): Promise<b
 
 async function statusSnapshot(config: Required<Config>): Promise<SupervisorStatusSnapshot> {
   const control = await readControl()
-  let manifest: SupervisorManifest | null = null
-  let selected: SupervisorArtifact | null = null
-  let manifestError: string | null = null
-  try {
-    manifest = await readManifest(config.manifestUrl)
-    selected = selectArtifact(manifest)
-  } catch (error) {
-    manifestError = errorMessage(error)
-    manifest = null
-    selected = null
-  }
+  const { manifest, selected, error } = await installerSelection(config)
   return {
     manifest,
     selected,
     download: downloadSnapshot,
     control,
     connected: control === null ? false : await supervisorHealth(control),
-    error: manifestError,
+    error,
   }
 }
 
@@ -260,7 +319,12 @@ async function route(request: IncomingMessage, response: ServerResponse, config:
       return
     }
     if (pathname === '/dsh-supervisor/manifest' && request.method === 'GET') {
-      sendJson(response, 200, await readManifest(config.manifestUrl))
+      const { manifest, error } = await installerSelection(config)
+      if (manifest === null) {
+        sendJson(response, 500, { error })
+        return
+      }
+      sendJson(response, 200, manifest)
       return
     }
     if (pathname === '/dsh-supervisor/download' && request.method === 'POST') {
@@ -302,7 +366,10 @@ export const name = 'dsh-supervisor-web'
 export const inject = ['webServer']
 
 export function apply(ctx: HostContext, config: Config = {}): void {
-  const resolved = { manifestUrl: config.manifestUrl ?? DEFAULT_MANIFEST_URL }
+  const resolved = {
+    manifestUrl: config.manifestUrl ?? DEFAULT_MANIFEST_URL,
+    localArtifactPath: config.localArtifactPath ?? '',
+  }
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: '/dsh-supervisor',
