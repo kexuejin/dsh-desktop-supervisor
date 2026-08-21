@@ -3,7 +3,7 @@
   flex-direction: column;
   gap: 14px;
   width: 100%;
-  max-width: 760px;
+  max-width: 680px;
   color: var(--dsw-alias-label-primary);
   font-size: 13px;
   line-height: 20px;
@@ -11,112 +11,107 @@
 
 .section h3,
 .section h4,
-.section p,
-.details {
+.section p {
   margin: 0;
 }
 
-.card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.hero {
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
-  padding: 14px;
+  border-radius: 12px;
+  padding: 16px;
   background: var(--dsw-alias-bg-layer-3);
 }
 
-.card h3 {
-  font-size: 15px;
+.hero h3 {
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.hero p,
+.tile p,
+.note,
+.status {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tile {
+  display: flex;
+  min-height: 132px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.tile h4 {
+  font-size: 14px;
   line-height: 22px;
 }
 
-.card p,
-.error,
-.guide {
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.error {
-  color: var(--dsw-alias-state-error-primary);
-}
-
-.badge {
-  border-radius: 999px;
-  padding: 3px 8px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.badge[data-state='connected'] {
-  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);
-  color: var(--dsw-alias-state-success-primary);
-}
-
-.details {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.details > div,
-.guide {
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  padding: 10px 12px;
-  background: var(--dsw-alias-bg-layer-1);
-}
-
-.details dt {
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-}
-
-.details dd {
-  margin: 2px 0 0;
-  overflow-wrap: anywhere;
-}
-
-.guide {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.guide h4 {
-  color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-}
-
-.guide ol {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.actions {
+.inlineActions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.button {
+.primaryButton,
+.secondaryButton,
+.ghostButton {
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 7px;
-  padding: 6px 11px;
-  background: var(--dsw-alias-bg-layer-3);
-  color: var(--dsw-alias-label-primary);
+  border-radius: 8px;
+  padding: 7px 12px;
   font: inherit;
   cursor: pointer;
 }
 
-.button:hover:not(:disabled) {
+.primaryButton {
+  border-color: transparent;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.secondaryButton {
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-label-primary);
+}
+
+.ghostButton {
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.secondaryButton:hover:not(:disabled),
+.ghostButton:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.button:disabled {
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.ghostButton:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.error {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+@media (max-width: 760px) {
+  .tiles {
+    grid-template-columns: 1fr;
+  }
 }

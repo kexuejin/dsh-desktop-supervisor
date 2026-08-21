@@ -1,6 +1,7 @@
 /** Route-level coverage for the desktop supervisor Web companion. */
 
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdtemp, rm, writeFile, mkdir, readFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -105,6 +106,55 @@ async function requestJson(port: number, path: string, init?: RequestInit): Prom
   return { status: response.status, value: await response.json() as unknown }
 }
 
+function sha256Text(text: string): string {
+  return createHash('sha256').update(text).digest('hex')
+}
+
+async function startArtifactServer(payload: string): Promise<{ manifestUrl: string; artifactUrl: string }> {
+  const digest = sha256Text(payload)
+  supervisor = createServer((request, response) => {
+    if (request.url === '/manifest.json' && request.method === 'GET') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        schema: 1,
+        app: 'dsh-desktop-supervisor',
+        version: '0.1.0-dev.1',
+        channel: 'test',
+        artifacts: [{
+          platform: process.platform,
+          arch: process.arch,
+          kind: 'dmg',
+          file: 'remote-artifact.dmg',
+          url: '',
+          sha256: digest,
+          signed: false,
+          notarized: false,
+          installMode: 'manual-open',
+        }],
+      }).replace('"url":""', `"url":"${artifactUrl()}"`))
+      return
+    }
+    if (request.url === '/remote-artifact.dmg' && request.method === 'GET') {
+      response.writeHead(200, { 'content-type': 'application/octet-stream' })
+      response.end(payload)
+      return
+    }
+    response.writeHead(404)
+    response.end()
+  })
+  await new Promise<void>((resolve, reject) => {
+    supervisor?.once('error', reject)
+    supervisor?.listen(0, '127.0.0.1', () => { resolve() })
+  })
+  function artifactUrl(): string {
+    const address = supervisor?.address()
+    if (address === undefined || address === null || typeof address === 'string') throw new Error('server address missing')
+    return `http://127.0.0.1:${String(address.port)}/remote-artifact.dmg`
+  }
+  const address = supervisor.address()
+  if (address === null || typeof address === 'string') throw new Error('server address missing')
+  return { manifestUrl: `http://127.0.0.1:${String(address.port)}/manifest.json`, artifactUrl: artifactUrl() }
+}
 async function writeSupervisorDescriptor(url: string): Promise<void> {
   if (root === undefined) throw new Error('test root missing')
   const supervisorRoot = join(root, 'supervisor')
@@ -192,6 +242,21 @@ describe('supervisor-web routes', () => {
     const download = await requestJson(port, '/dsh-supervisor/download', { method: 'POST' })
     expect(download.value).toMatchObject({ state: 'ready', path: artifactPath, verified: true })
     await rm(artifactDir, { recursive: true, force: true })
+  })
+
+  it('downloads and verifies a remote release artifact', { timeout: 60_000 }, async () => {
+    const payload = 'remote artifact bytes'
+    const remote = await startArtifactServer(payload)
+    loaded = await loadCompanion(remote.manifestUrl)
+    const port = loaded.port
+
+    const download = await requestJson(port, '/dsh-supervisor/download', { method: 'POST' })
+    expect(download).toMatchObject({
+      status: 200,
+      value: { state: 'ready', artifact: 'remote-artifact.dmg', verified: true },
+    })
+    const snapshot = download.value as { path: string }
+    await expect(readFile(snapshot.path, 'utf8')).resolves.toBe(payload)
   })
 
   it('pairs through the control descriptor token', { timeout: 60_000 }, async () => {

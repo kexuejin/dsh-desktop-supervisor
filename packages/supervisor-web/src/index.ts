@@ -141,7 +141,7 @@ function downloadFile(url: string, path: string, redirects = MAX_REDIRECTS): Pro
       response.pipe(file)
       file.on('finish', () => {
         file.close((error) => {
-          if (error === null) resolve()
+          if (error === null || error === undefined) resolve()
           else reject(error)
         })
       })

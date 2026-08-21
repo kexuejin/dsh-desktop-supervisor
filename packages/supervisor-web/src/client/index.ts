@@ -29,6 +29,7 @@ export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
   const injected = (): SupervisorSettingsSectionInjected => ({
     status: () => readJson('/dsh-supervisor/status'),
+    restartDsh: () => readJson('/dsh-market/restart', { method: 'POST' }),
     download: () => readJson('/dsh-supervisor/download', { method: 'POST' }),
     openDownload: () => readJson('/dsh-supervisor/open-download', { method: 'POST' }),
     connect: () => readJson('/dsh-supervisor/connect', { method: 'POST' }),

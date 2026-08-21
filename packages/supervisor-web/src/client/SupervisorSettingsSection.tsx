@@ -5,6 +5,7 @@ import css from './SupervisorSettingsSection.module.css'
 
 export interface SupervisorSettingsSectionInjected {
   status: () => Promise<SupervisorStatusSnapshot>
+  restartDsh: () => Promise<unknown>
   download: () => Promise<unknown>
   openDownload: () => Promise<unknown>
   connect: () => Promise<unknown>
@@ -20,33 +21,26 @@ type ViewState =
   | { status: 'error'; message: string }
   | { status: 'ready'; snapshot: SupervisorStatusSnapshot }
 
-function artifactLabel(snapshot: SupervisorStatusSnapshot): string {
-  const artifact = snapshot.selected
-  if (artifact === null) return '—'
-  return `${artifact.platform}/${artifact.arch} ${artifact.file}`
-}
-
-function artifactSource(snapshot: SupervisorStatusSnapshot): string {
-  const artifact = snapshot.selected
-  if (artifact === null) return '—'
-  return artifact.url
-}
-
-function signingLabel(snapshot: SupervisorStatusSnapshot, t: SupervisorSettingsSectionProps['t']): string {
-  const artifact = snapshot.selected
-  if (artifact === null) return t('noArtifact')
-  if (artifact.signed && artifact.notarized) return t('signed')
-  return t('unsigned')
-}
+type ActionStatus =
+  | { state: 'idle' }
+  | { state: 'working'; message: string }
+  | { state: 'error'; message: string }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function trayStatus(snapshot: SupervisorStatusSnapshot, t: SupervisorSettingsSectionProps['t']): string {
+  if (snapshot.connected) return t('trayConnected')
+  if (snapshot.download.verified) return t('trayReady')
+  if (snapshot.selected !== null) return t('trayAvailable')
+  return t('trayUnavailable')
+}
+
 export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps): ReactNode {
-  const { status, download, openDownload, connect, t } = props
+  const { status, restartDsh, download, openDownload, connect, t } = props
   const [state, setState] = useState<ViewState>({ status: 'loading' })
-  const [busy, setBusy] = useState(false)
+  const [action, setAction] = useState<ActionStatus>({ state: 'idle' })
 
   const refresh = (): void => {
     setState({ status: 'loading' })
@@ -58,29 +52,33 @@ export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps)
 
   useEffect(refresh, [status])
 
-  const runDownload = (): void => {
-    setBusy(true)
-    void download().then(
-      () => status(),
-    ).then(
-      (snapshot) => { setState({ status: 'ready', snapshot }) },
-      (error) => { setState({ status: 'error', message: errorMessage(error) }) },
-    ).finally(() => { setBusy(false) })
+  const runRestart = (): void => {
+    setAction({ state: 'working', message: t('restarting') })
+    void restartDsh().then(
+      () => {
+        setAction({ state: 'working', message: t('restartQueued') })
+        window.setTimeout(() => { window.location.reload() }, 1800)
+      },
+      (error) => { setAction({ state: 'error', message: errorMessage(error) }) },
+    )
   }
 
-  const runOpen = (): void => {
-    setBusy(true)
-    void openDownload().finally(() => { setBusy(false) })
-  }
-
-  const runConnect = (): void => {
-    setBusy(true)
-    void connect().then(
+  const runTrayTool = (snapshot: SupervisorStatusSnapshot): void => {
+    setAction({ state: 'working', message: t('trayPreparing') })
+    const task = snapshot.connected
+      ? connect()
+      : snapshot.download.verified
+        ? openDownload()
+        : download().then(() => openDownload())
+    void task.then(
       () => status(),
     ).then(
-      (snapshot) => { setState({ status: 'ready', snapshot }) },
-      (error) => { setState({ status: 'error', message: errorMessage(error) }) },
-    ).finally(() => { setBusy(false) })
+      (next) => {
+        setState({ status: 'ready', snapshot: next })
+        setAction({ state: 'idle' })
+      },
+      (error) => { setAction({ state: 'error', message: errorMessage(error) }) },
+    )
   }
 
   if (state.status === 'loading') {
@@ -90,69 +88,54 @@ export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps)
     return (
       <div className={css.section}>
         <p className={css.error}>{t('error')}: {state.message}</p>
-        <button className={css.button} type="button" onClick={refresh}>{t('retry')}</button>
+        <button className={css.secondaryButton} type="button" onClick={refresh}>{t('retry')}</button>
       </div>
     )
   }
 
   const snapshot = state.snapshot
-  const downloadReady = snapshot.download.verified && snapshot.download.path !== null
-  const isUnsigned = snapshot.selected !== null && (!snapshot.selected.signed || !snapshot.selected.notarized)
-  const isLocalArtifact = snapshot.selected?.url.startsWith('file:') ?? false
+  const busy = action.state === 'working'
+  const canUseTrayTool = snapshot.connected || snapshot.download.verified || snapshot.selected !== null
+  const trayButton = snapshot.connected ? t('connectTray') : snapshot.download.verified ? t('openTrayInstaller') : t('installTrayTool')
 
   return (
     <div className={css.section}>
-      <div className={css.card}>
+      <div className={css.hero}>
         <div>
           <h3>{t('title')}</h3>
-          <p>{snapshot.connected ? t('connected') : t('notConnected')}</p>
+          <p>{t('subtitle')}</p>
         </div>
-        <span className={css.badge} data-state={snapshot.connected ? 'connected' : 'missing'}>
-          {snapshot.connected ? t('connectedBadge') : t('missingBadge')}
-        </span>
       </div>
 
-      <div className={css.guide}>
-        <h4>{t('availableWithoutClient')}</h4>
-        <p>{t('availableWithoutClientCopy')}</p>
+      <div className={css.tiles}>
+        <section className={css.tile}>
+          <div>
+            <h4>{t('restartTitle')}</h4>
+            <p>{t('restartCopy')}</p>
+          </div>
+          <button className={css.primaryButton} type="button" onClick={runRestart} disabled={busy}>
+            {t('restartButton')}
+          </button>
+        </section>
+
+        <section className={css.tile}>
+          <div>
+            <h4>{t('trayTitle')}</h4>
+            <p>{trayStatus(snapshot, t)}</p>
+          </div>
+          <div className={css.inlineActions}>
+            <button className={css.secondaryButton} type="button" onClick={() => { runTrayTool(snapshot) }} disabled={busy || !canUseTrayTool}>
+              {trayButton}
+            </button>
+            <button className={css.ghostButton} type="button" onClick={refresh} disabled={busy}>
+              {t('refresh')}
+            </button>
+          </div>
+        </section>
       </div>
 
-      <dl className={css.details}>
-        <div><dt>{t('version')}</dt><dd>{snapshot.manifest?.version ?? '—'}</dd></div>
-        <div><dt>{t('artifact')}</dt><dd>{artifactLabel(snapshot)}</dd></div>
-        <div><dt>{t('signing')}</dt><dd>{signingLabel(snapshot, t)}</dd></div>
-        <div><dt>{t('downloadState')}</dt><dd>{snapshot.download.state}</dd></div>
-        <div><dt>{t('source')}</dt><dd>{artifactSource(snapshot)}</dd></div>
-        {snapshot.error !== null ? <div><dt>{t('manifestError')}</dt><dd>{snapshot.error}</dd></div> : null}
-      </dl>
-
-      {isUnsigned ? (
-        <div className={css.guide}>
-          <h4>{t('developerMode')}</h4>
-          <p>{t('developerModeCopy')}</p>
-          <ol>
-            <li>{t('stepDownload')}</li>
-            <li>{t('stepOpen')}</li>
-            <li>{t('stepAllow')}</li>
-            <li>{t('stepConnect')}</li>
-          </ol>
-        </div>
-      ) : null}
-
-      <div className={css.actions}>
-        <button className={css.button} type="button" onClick={runDownload} disabled={busy || snapshot.selected === null}>
-          {isLocalArtifact ? t('verifyLocal') : t('download')}
-        </button>
-        <button className={css.button} type="button" onClick={runOpen} disabled={busy || !downloadReady}>
-          {t('openDownload')}
-        </button>
-        <button className={css.button} type="button" onClick={runConnect} disabled={busy || snapshot.control === null}>
-          {t('connect')}
-        </button>
-        <button className={css.button} type="button" onClick={refresh} disabled={busy}>
-          {t('refresh')}
-        </button>
-      </div>
+      <p className={css.note}>{t('trayNote')}</p>
+      {action.state !== 'idle' ? <p className={action.state === 'error' ? css.error : css.status}>{action.message}</p> : null}
     </div>
   )
 }

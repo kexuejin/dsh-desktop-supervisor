@@ -5,10 +5,12 @@ use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::Command;
 use std::thread;
+use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const TRAY_ICON_RGBA: &[u8] = include_bytes!("../icons/tray-template.rgba");
 
 struct SupervisorPaths {
     root: PathBuf,
@@ -36,7 +38,11 @@ fn ensure_supervisor_paths() -> std::io::Result<SupervisorPaths> {
         fs::write(&token_path, format!("dev-token-{}", std::process::id()))?;
     }
     let token = fs::read_to_string(&token_path)?.trim().to_string();
-    Ok(SupervisorPaths { root, token_path, token })
+    Ok(SupervisorPaths {
+        root,
+        token_path,
+        token,
+    })
 }
 
 fn respond(mut stream: TcpStream, status: &str, body: &str) {
@@ -106,16 +112,22 @@ fn open_dsh_web() -> std::io::Result<()> {
     if cfg!(target_os = "macos") {
         Command::new("open").arg("http://127.0.0.1:3080").spawn()?;
     } else if cfg!(target_os = "windows") {
-        Command::new("cmd").args(["/C", "start", "", "http://127.0.0.1:3080"]).spawn()?;
+        Command::new("cmd")
+            .args(["/C", "start", "", "http://127.0.0.1:3080"])
+            .spawn()?;
     } else {
-        Command::new("xdg-open").arg("http://127.0.0.1:3080").spawn()?;
+        Command::new("xdg-open")
+            .arg("http://127.0.0.1:3080")
+            .spawn()?;
     }
     Ok(())
 }
 
 fn main() {
-    let paths = ensure_supervisor_paths().expect("supervisor descriptor directory must be writable");
-    let port = start_control_server(paths.token.clone()).expect("control server must bind loopback");
+    let paths =
+        ensure_supervisor_paths().expect("supervisor descriptor directory must be writable");
+    let port =
+        start_control_server(paths.token.clone()).expect("control server must bind loopback");
     write_control_file(&paths, port).expect("control descriptor must be writable");
 
     tauri::Builder::default()
@@ -123,7 +135,14 @@ fn main() {
             let open = MenuItem::with_id(app, "open", "Open DSH Web", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;
-            let _tray = TrayIconBuilder::new().menu(&menu).build(app)?;
+            let tray_icon = Image::new(TRAY_ICON_RGBA, 32, 32);
+            let tray = TrayIconBuilder::new()
+                .menu(&menu)
+                .tooltip("DSH Desktop Supervisor")
+                .title("DSH")
+                .icon(tray_icon)
+                .icon_as_template(true);
+            let _tray = tray.build(app)?;
             Ok(())
         })
         .on_menu_event(|app, event| match event.id().as_ref() {
