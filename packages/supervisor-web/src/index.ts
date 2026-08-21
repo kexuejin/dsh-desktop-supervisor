@@ -51,7 +51,6 @@ const initialDownload: DownloadSnapshot = {
   error: null,
 }
 
-let manifestCache: SupervisorManifest | null = null
 let downloadSnapshot: DownloadSnapshot = initialDownload
 
 interface TextRequestOptions {
@@ -161,10 +160,7 @@ function parseManifest(text: string): SupervisorManifest {
 }
 
 async function readManifest(url: string): Promise<SupervisorManifest> {
-  if (manifestCache !== null) return manifestCache
-  const manifest = parseManifest(await requestText(url))
-  manifestCache = manifest
-  return manifest
+  return parseManifest(await requestText(url))
 }
 
 function artifactKind(file: string): string {
