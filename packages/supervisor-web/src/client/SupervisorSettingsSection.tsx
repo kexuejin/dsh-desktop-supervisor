@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { PropsLocale, PropsRuntime, InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SupervisorStatusSnapshot } from '../types.ts'
+import type { SupervisorStatusSnapshot, SupervisorUpdateSnapshot } from '../types.ts'
 import css from './SupervisorSettingsSection.module.css'
 
 export interface SupervisorSettingsSectionInjected {
@@ -9,6 +9,8 @@ export interface SupervisorSettingsSectionInjected {
   download: () => Promise<unknown>
   openDownload: () => Promise<unknown>
   connect: () => Promise<unknown>
+  checkUpdate: () => Promise<SupervisorUpdateSnapshot>
+  installUpdate: () => Promise<SupervisorUpdateSnapshot>
 }
 
 export type SupervisorSettingsSectionProps =
@@ -38,9 +40,10 @@ function trayStatus(snapshot: SupervisorStatusSnapshot, t: SupervisorSettingsSec
 }
 
 export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps): ReactNode {
-  const { status, restartDsh, download, openDownload, connect, t } = props
+  const { status, restartDsh, download, openDownload, connect, checkUpdate, installUpdate, t } = props
   const [state, setState] = useState<ViewState>({ status: 'loading' })
   const [action, setAction] = useState<ActionStatus>({ state: 'idle' })
+  const [update, setUpdate] = useState<SupervisorUpdateSnapshot | null>(null)
 
   const refresh = (): void => {
     setState({ status: 'loading' })
@@ -58,6 +61,29 @@ export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps)
       () => {
         setAction({ state: 'working', message: t('restartQueued') })
         window.setTimeout(() => { window.location.reload() }, 1800)
+      },
+      (error) => { setAction({ state: 'error', message: errorMessage(error) }) },
+    )
+  }
+
+
+  const runCheckUpdate = (): void => {
+    setAction({ state: 'working', message: t('checkingUpdate') })
+    void checkUpdate().then(
+      (result) => {
+        setUpdate(result)
+        setAction({ state: 'idle' })
+      },
+      (error) => { setAction({ state: 'error', message: errorMessage(error) }) },
+    )
+  }
+
+  const runInstallUpdate = (): void => {
+    setAction({ state: 'working', message: t('installingUpdate') })
+    void installUpdate().then(
+      (result) => {
+        setUpdate(result)
+        setAction({ state: 'working', message: t('updateInstalled') })
       },
       (error) => { setAction({ state: 'error', message: errorMessage(error) }) },
     )
@@ -97,6 +123,11 @@ export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps)
   const busy = action.state === 'working'
   const canUseTrayTool = snapshot.connected || snapshot.download.verified || snapshot.selected !== null
   const trayButton = snapshot.connected ? t('connectTray') : snapshot.download.verified ? t('openTrayInstaller') : t('installTrayTool')
+  const updateText = update === null ? null : update.available === true
+    ? t('updateAvailable').replace('{version}', update.version ?? '')
+    : update.installed === true
+      ? t('updateInstalled')
+      : t('updateCurrent')
 
   return (
     <div className={css.section}>
@@ -127,10 +158,21 @@ export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps)
             <button className={css.secondaryButton} type="button" onClick={() => { runTrayTool(snapshot) }} disabled={busy || !canUseTrayTool}>
               {trayButton}
             </button>
+            {snapshot.connected ? (
+              <button className={css.ghostButton} type="button" onClick={runCheckUpdate} disabled={busy}>
+                {t('checkUpdate')}
+              </button>
+            ) : null}
+            {snapshot.connected && update?.available === true ? (
+              <button className={css.ghostButton} type="button" onClick={runInstallUpdate} disabled={busy}>
+                {t('installUpdate')}
+              </button>
+            ) : null}
             <button className={css.ghostButton} type="button" onClick={refresh} disabled={busy}>
               {t('refresh')}
             </button>
           </div>
+          {updateText !== null ? <p className={css.status}>{updateText}</p> : null}
         </section>
       </div>
 

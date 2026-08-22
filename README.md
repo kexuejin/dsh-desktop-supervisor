@@ -8,14 +8,19 @@ It does **not** replace `dshmarket`. Plugin install, update, hot mount, hot rest
 
 ## Repository Layout
 
-- `app/` — Tauri 2 tray application. It writes `$DSH_HOME/supervisor/control.json`, serves loopback `/health`, `/status`, token-authenticated `/pair`, `/restart`, and `/disable-plugin`, opens DSH Web from the tray, restarts DSH from the captured launch descriptor when Web is unavailable, and can write a row-level `disabled: true` patch for a specific failed plugin.
+- `app/` — Tauri 2 tray application. It writes `$DSH_HOME/supervisor/control.json`, serves loopback `/health`, `/status`, token-authenticated `/pair`, `/restart`, `/disable-plugin`, `/check-update`, and `/install-update`, opens DSH Web from the tray, restarts DSH from the captured launch descriptor when Web is unavailable, can write a row-level `disabled: true` patch for a specific failed plugin, and installs signed tray-app updates through Tauri updater.
 - `packages/supervisor-web/` — DSH Web companion plugin. It installs through DSH/plugin distribution, reads GitHub Release manifests, verifies SHA-256 downloads, opens verified artifacts, pairs with the local tray app, and writes `$DSH_HOME/supervisor/launch.json` so the desktop app can restart or recover DSH externally.
-- `scripts/desktop-supervisor-manifest.mjs` — release manifest generator used by GitHub Actions.
+- `scripts/desktop-supervisor-manifest.mjs` — manual installer manifest generator used by GitHub Actions.
+- `scripts/desktop-supervisor-updater-manifest.mjs` — Tauri updater `latest.json` generator from signed release artifacts and `.sig` files.
 - `docs/plans/` — design notes for ownership, distribution, pairing, and phased recovery.
 
 ## Developer Mode
 
 The first macOS channel is unsigned and unnotarized. Users must allow it manually with Finder right-click Open or System Settings → Privacy & Security → Open Anyway. Do not disable Gatekeeper globally.
+
+## Updates
+
+Release builds publish two metadata files: `manifest.json` for DSH Web installation/download when the tray app is absent, and `latest.json` for the tray app's signed self-update flow. `0.1.0-dev.3` is the first build that contains updater code, so older `dev.2` installs must be replaced manually once; later builds can be checked and installed from the tray menu or the Settings → Desktop launch page. GitHub Actions requires `TAURI_SIGNING_PRIVATE_KEY`; `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is optional for password-protected keys.
 
 ## Local Checks
 

@@ -52,6 +52,31 @@ export interface SupervisorControlDescriptor {
   capabilities: string[]
 }
 
+
+/** Update check or install result returned by the running tray supervisor. */
+export interface SupervisorUpdateSnapshot {
+  /** Whether the tray supervisor accepted the update request. */
+  ok?: boolean
+  /** Whether a newer signed updater artifact is available. */
+  available?: boolean
+  /** Currently running tray app version. */
+  currentVersion?: string
+  /** Available or installed update version. */
+  version?: string
+  /** Tauri updater target selected for this machine. */
+  target?: string
+  /** Download URL selected by the Tauri updater. */
+  url?: string
+  /** Release notes from latest.json, if provided. */
+  notes?: string | null
+  /** Publish date from latest.json, if provided. */
+  date?: string | null
+  /** Whether the updater installed an artifact. */
+  installed?: boolean
+  /** Relaunch state after installation. */
+  restart?: string
+}
+
 /** Web companion download state. */
 export type DownloadState =
   | 'idle'

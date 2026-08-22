@@ -8,6 +8,8 @@ use std::thread;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
+use tauri::AppHandle;
+use tauri_plugin_updater::{Update, UpdaterExt};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const TRAY_ICON_RGBA: &[u8] = include_bytes!("../icons/tray-template.rgba");
@@ -284,7 +286,60 @@ fn restart_dsh() -> std::io::Result<()> {
         .or_else(|_| restart_from_launch_descriptor())
 }
 
-fn serve(mut stream: TcpStream, token: &str) {
+fn update_response(update: Option<&Update>) -> String {
+    match update {
+        Some(update) => serde_json::json!({
+            "ok": true,
+            "available": true,
+            "currentVersion": update.current_version,
+            "version": update.version,
+            "target": update.target,
+            "url": update.download_url.to_string(),
+            "notes": update.body,
+            "date": update.date.map(|date| date.to_string()),
+        })
+        .to_string(),
+        None => serde_json::json!({
+            "ok": true,
+            "available": false,
+            "currentVersion": VERSION,
+        })
+        .to_string(),
+    }
+}
+
+fn check_update(app: &AppHandle) -> Result<String, String> {
+    let update = tauri::async_runtime::block_on(async {
+        let updater = app.updater().map_err(|error| error.to_string())?;
+        updater.check().await.map_err(|error| error.to_string())
+    })?;
+    Ok(update_response(update.as_ref()))
+}
+
+fn install_update(app: AppHandle) -> Result<String, String> {
+    let version = tauri::async_runtime::block_on(async {
+        let updater = app.updater().map_err(|error| error.to_string())?;
+        let Some(update) = updater.check().await.map_err(|error| error.to_string())? else {
+            return Err("no update available".to_string());
+        };
+        let version = update.version.clone();
+        update
+            .download_and_install(|_, _| {}, || {})
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok::<String, String>(version)
+    })?;
+    app.request_restart();
+    Ok(serde_json::json!({
+        "ok": true,
+        "installed": true,
+        "version": version,
+        "restart": "requested",
+    })
+    .to_string())
+}
+
+fn serve(mut stream: TcpStream, token: &str, app: &AppHandle) {
     let Ok(request) = read_http_request(&mut stream) else {
         return;
     };
@@ -312,6 +367,32 @@ fn serve(mut stream: TcpStream, token: &str) {
             ),
         },
         ("POST", "/restart") => respond(stream, "401 Unauthorized", "{\"error\":\"unauthorized\"}"),
+        ("POST", "/check-update") if authorized(&request, token) => match check_update(app) {
+            Ok(body) => respond(stream, "200 OK", &body),
+            Err(error) => respond(
+                stream,
+                "502 Bad Gateway",
+                &format!(
+                    "{{\"error\":{}}}",
+                    serde_json::to_string(&error)
+                        .unwrap_or_else(|_| "\"update check failed\"".to_string())
+                ),
+            ),
+        },
+        ("POST", "/check-update") => respond(stream, "401 Unauthorized", "{\"error\":\"unauthorized\"}"),
+        ("POST", "/install-update") if authorized(&request, token) => match install_update(app.clone()) {
+            Ok(body) => respond(stream, "200 OK", &body),
+            Err(error) => respond(
+                stream,
+                "502 Bad Gateway",
+                &format!(
+                    "{{\"error\":{}}}",
+                    serde_json::to_string(&error)
+                        .unwrap_or_else(|_| "\"update install failed\"".to_string())
+                ),
+            ),
+        },
+        ("POST", "/install-update") => respond(stream, "401 Unauthorized", "{\"error\":\"unauthorized\"}"),
         ("POST", "/disable-plugin") if authorized(&request, token) => {
             match disable_plugin_from_request(request_body(&request)) {
                 Ok(body) => respond(stream, "200 OK", &body),
@@ -327,12 +408,12 @@ fn serve(mut stream: TcpStream, token: &str) {
     }
 }
 
-fn start_control_server(token: String) -> std::io::Result<u16> {
+fn start_control_server(token: String, app: AppHandle) -> std::io::Result<u16> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let port = listener.local_addr()?.port();
     thread::spawn(move || {
         for stream in listener.incoming().flatten() {
-            serve(stream, &token);
+            serve(stream, &token, &app);
         }
     });
     Ok(port)
@@ -340,7 +421,7 @@ fn start_control_server(token: String) -> std::io::Result<u16> {
 
 fn write_control_file(paths: &SupervisorPaths, port: u16) -> std::io::Result<()> {
     let control = format!(
-        "{{\n  \"schema\": 1,\n  \"app\": \"dsh-desktop-supervisor\",\n  \"version\": \"{VERSION}\",\n  \"pid\": {},\n  \"url\": \"http://127.0.0.1:{port}\",\n  \"tokenPath\": {},\n  \"capabilities\": [\"status\", \"tray\", \"pair\", \"restartDsh\", \"disablePlugin\"]\n}}\n",
+        "{{\n  \"schema\": 1,\n  \"app\": \"dsh-desktop-supervisor\",\n  \"version\": \"{VERSION}\",\n  \"pid\": {},\n  \"url\": \"http://127.0.0.1:{port}\",\n  \"tokenPath\": {},\n  \"capabilities\": [\"status\", \"tray\", \"pair\", \"restartDsh\", \"disablePlugin\", \"checkUpdate\", \"installUpdate\"]\n}}\n",
         std::process::id(),
         serde_json::to_string(&paths.token_path.to_string_lossy()).unwrap_or_else(|_| "\"\"".to_string()),
     );
@@ -365,12 +446,12 @@ fn open_dsh_web() -> std::io::Result<()> {
 fn main() {
     let paths =
         ensure_supervisor_paths().expect("supervisor descriptor directory must be writable");
-    let port =
-        start_control_server(paths.token.clone()).expect("control server must bind loopback");
-    write_control_file(&paths, port).expect("control descriptor must be writable");
 
     tauri::Builder::default()
-        .setup(|app| {
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .setup(move |app| {
+            let port = start_control_server(paths.token.clone(), app.handle().clone())?;
+            write_control_file(&paths, port)?;
             #[cfg(target_os = "macos")]
             {
                 app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -378,8 +459,20 @@ fn main() {
             }
             let open = MenuItem::with_id(app, "open", "Open DSH Web", true, None::<&str>)?;
             let restart = MenuItem::with_id(app, "restart", "Restart DSH", true, None::<&str>)?;
+            let check_update =
+                MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
+            let install_update = MenuItem::with_id(
+                app,
+                "install_update",
+                "Install Update and Relaunch",
+                true,
+                None::<&str>,
+            )?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &restart, &quit])?;
+            let menu = Menu::with_items(
+                app,
+                &[&open, &restart, &check_update, &install_update, &quit],
+            )?;
             let tray_icon = Image::new(TRAY_ICON_RGBA, 32, 32);
             let tray = TrayIconBuilder::new()
                 .menu(&menu)
@@ -396,6 +489,18 @@ fn main() {
             }
             "restart" => {
                 let _ = restart_dsh();
+            }
+            "check_update" => {
+                let app = app.clone();
+                thread::spawn(move || {
+                    let _ = check_update(&app);
+                });
+            }
+            "install_update" => {
+                let app = app.clone();
+                thread::spawn(move || {
+                    let _ = install_update(app);
+                });
             }
             "quit" => app.exit(0),
             _ => {}

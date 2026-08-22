@@ -33,6 +33,8 @@ export function apply(ctx: ClientContext): void {
     download: () => readJson('/dsh-supervisor/download', { method: 'POST' }),
     openDownload: () => readJson('/dsh-supervisor/open-download', { method: 'POST' }),
     connect: () => readJson('/dsh-supervisor/connect', { method: 'POST' }),
+    checkUpdate: () => readJson('/dsh-supervisor/check-update', { method: 'POST' }),
+    installUpdate: () => readJson('/dsh-supervisor/install-update', { method: 'POST' }),
   })
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',

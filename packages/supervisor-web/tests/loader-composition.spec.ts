@@ -196,6 +196,20 @@ async function startSupervisor(): Promise<{ url: string; requests: string[]; aut
       response.end('{"ok":true}')
       return
     }
+    if (request.url === '/check-update' && request.method === 'POST') {
+      authorizations.push(request.headers.authorization ?? '')
+      requests.push(request.url)
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end('{"ok":true,"available":true,"currentVersion":"0.1.0-dev.2","version":"0.1.0-dev.3"}')
+      return
+    }
+    if (request.url === '/install-update' && request.method === 'POST') {
+      authorizations.push(request.headers.authorization ?? '')
+      requests.push(request.url)
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end('{"ok":true,"installed":true,"version":"0.1.0-dev.3","restart":"requested"}')
+      return
+    }
     if (request.url === '/disable-plugin' && request.method === 'POST') {
       let body = ''
       request.setEncoding('utf8')
@@ -319,6 +333,27 @@ describe('supervisor-web routes', () => {
     expect(local.requests).toContain('/disable-plugin')
     expect(local.authorizations.at(-1)).toBe('Bearer secret-token')
     expect(JSON.parse(local.bodies.at(-1) ?? '{}')).toEqual({ pluginId: 'bad-plugin', reason: 'startup failure' })
+  })
+
+  it('proxies updater checks and installs through the control descriptor token', { timeout: 60_000 }, async () => {
+    const local = await startSupervisor()
+    loaded = await loadCompanion('http://127.0.0.1:9/manifest.json')
+    await writeSupervisorDescriptor(local.url, ['status', 'pair', 'checkUpdate', 'installUpdate'])
+    const port = loaded.port
+
+    const check = await requestJson(port, '/dsh-supervisor/check-update', { method: 'POST' })
+    expect(check).toMatchObject({
+      status: 200,
+      value: { ok: true, available: true, currentVersion: '0.1.0-dev.2', version: '0.1.0-dev.3' },
+    })
+
+    const install = await requestJson(port, '/dsh-supervisor/install-update', { method: 'POST' })
+    expect(install).toMatchObject({
+      status: 200,
+      value: { ok: true, installed: true, version: '0.1.0-dev.3', restart: 'requested' },
+    })
+    expect(local.requests).toEqual(['/check-update', '/install-update'])
+    expect(local.authorizations).toEqual(['Bearer secret-token', 'Bearer secret-token'])
   })
 
   it('pairs through the control descriptor token', { timeout: 60_000 }, async () => {

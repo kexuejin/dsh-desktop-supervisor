@@ -21,6 +21,13 @@ export const zh = {
   openTrayInstaller: '打开安装包',
   connectTray: '连接托盘工具',
   refresh: '刷新',
+  checkUpdate: '检查更新',
+  installUpdate: '安装更新',
+  checkingUpdate: '正在检查托盘工具更新…',
+  installingUpdate: '正在安装托盘工具更新…',
+  updateAvailable: '发现托盘工具更新：{version}',
+  updateCurrent: '托盘工具已是最新版本。',
+  updateInstalled: '更新已安装，托盘工具正在重启。',
   trayNote: '高级托盘工具是可选项；只想重启 DSH 时不需要安装它。',
 } satisfies Record<string, string>
 
@@ -50,5 +57,12 @@ export const en = {
   openTrayInstaller: 'Open installer',
   connectTray: 'Connect tray tool',
   refresh: 'Refresh',
+  checkUpdate: 'Check updates',
+  installUpdate: 'Install update',
+  checkingUpdate: 'Checking tray tool updates…',
+  installingUpdate: 'Installing tray tool update…',
+  updateAvailable: 'Tray tool update available: {version}',
+  updateCurrent: 'The tray tool is up to date.',
+  updateInstalled: 'Update installed. The tray tool is relaunching.',
   trayNote: 'The tray tool is optional; restarting DSH does not require installing it.',
 } satisfies Record<SupervisorLocaleKey, string>

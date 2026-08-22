@@ -16,11 +16,11 @@ function classify(file) {
   const arch = match[2]
   const kind = name.endsWith('.dmg') ? 'dmg'
     : name.endsWith('.app.tar.gz') ? 'app-tar-gz'
-      : name.endsWith('.AppImage') ? 'appimage'
-        : name.endsWith('.deb') ? 'deb'
-          : name.endsWith('.rpm') ? 'rpm'
-            : name.endsWith('.msi') ? 'msi'
-              : name.endsWith('.exe') ? 'exe'
+      : name.endsWith('.AppImage') || name.endsWith('.AppImage.tar.gz') ? 'appimage'
+        : name.endsWith('.deb') || name.endsWith('.deb.tar.gz') ? 'deb'
+          : name.endsWith('.rpm') || name.endsWith('.rpm.tar.gz') ? 'rpm'
+            : name.endsWith('.msi') || name.endsWith('.msi.zip') ? 'msi'
+              : name.endsWith('.exe') || name.endsWith('.exe.zip') ? 'exe'
                 : 'archive'
   return { platform, arch, kind }
 }
@@ -52,7 +52,7 @@ const assetsDir = required(values['assets-dir'], '--assets-dir')
 const checksumsPath = required(values.checksums, '--checksums')
 const out = required(values.out, '--out')
 const checksums = checksumMap(await readFile(checksumsPath, 'utf8'))
-const files = (await readdir(assetsDir)).filter(file => !file.startsWith('.')).sort()
+const files = (await readdir(assetsDir)).filter(file => !file.startsWith('.') && !file.endsWith('.sig')).sort()
 const artifacts = files.map((file) => {
   const classified = classify(file)
   const sha256 = checksums.get(file)

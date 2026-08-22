@@ -77,17 +77,23 @@ jobs:
 
       - name: Build desktop supervisor
         if: matrix.platform != 'win32'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm --dir ${{ env.APP_DIR }} run build
 
-      - name: Build Windows portable executable
+      - name: Build Windows NSIS installer
         if: matrix.platform == 'win32'
-        run: cargo build --manifest-path ${{ env.APP_DIR }}/src-tauri/Cargo.toml --release
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm --dir ${{ env.APP_DIR }} exec tauri build --bundles nsis
 
       - name: Collect release assets
         shell: bash
         run: |
           mkdir -p "${{ env.RELEASE_DIR }}"
-          find "${{ env.APP_DIR }}/src-tauri/target/release/bundle" -type f \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o -name '*.exe' \) -print -exec cp {} "${{ env.RELEASE_DIR }}/" \;
+          find "${{ env.APP_DIR }}/src-tauri/target/release/bundle" -type f \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.AppImage' -o -name '*.AppImage.tar.gz' -o -name '*.deb' -o -name '*.deb.tar.gz' -o -name '*.rpm' -o -name '*.rpm.tar.gz' -o -name '*.msi' -o -name '*.exe' -o -name '*.sig' \) -print -exec cp {} "${{ env.RELEASE_DIR }}/" \;
           cd "${{ env.RELEASE_DIR }}"
           for file in *; do
             [ -f "$file" ] || continue
@@ -110,7 +116,7 @@ jobs:
           $bundleRoot = Join-Path $releaseRoot 'bundle'
           if (Test-Path $bundleRoot) {
             Get-ChildItem $bundleRoot -Recurse -File |
-              Where-Object { $_.Extension -in '.msi', '.exe' } |
+              Where-Object { $_.Extension -in '.msi', '.exe', '.zip', '.sig' } |
               ForEach-Object {
                 $safeName = $_.Name.Replace(' ', '.')
                 Copy-Item $_.FullName (Join-Path $env:RELEASE_DIR "dsh-desktop-supervisor-${{ matrix.platform }}-${{ matrix.arch }}-$safeName")
@@ -150,6 +156,11 @@ jobs:
             --assets-dir . \
             --checksums ../release/SHA256SUMS \
             --out ../release/manifest.json
+          node "$GITHUB_WORKSPACE/scripts/desktop-supervisor-updater-manifest.mjs" \
+            --tag "$RELEASE_TAG" \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG" \
+            --assets-dir . \
+            --out ../release/latest.json
           cp * ../release/
 
       - name: Create or update GitHub Release

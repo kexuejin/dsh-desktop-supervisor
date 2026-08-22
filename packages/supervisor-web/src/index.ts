@@ -8,7 +8,7 @@ import { request as requestHttp } from 'node:http'
 import { request as requestSecure } from 'node:https'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import z from '@deepseek-ai/schemastery'
-import type { SupervisorArtifact, SupervisorControlDescriptor, SupervisorLaunchDescriptor, SupervisorManifest, SupervisorStatusSnapshot, DownloadSnapshot } from './types.ts'
+import type { SupervisorArtifact, SupervisorControlDescriptor, SupervisorLaunchDescriptor, SupervisorManifest, SupervisorStatusSnapshot, DownloadSnapshot, SupervisorUpdateSnapshot } from './types.ts'
 
 interface WebServerService {
   register(route: {
@@ -403,6 +403,19 @@ async function restartViaSupervisor(): Promise<unknown> {
   return await callSupervisor(control, '/restart')
 }
 
+
+async function checkUpdateViaSupervisor(): Promise<SupervisorUpdateSnapshot> {
+  const control = await readControl()
+  if (control === null) throw new Error('no supervisor control descriptor is available')
+  return await callSupervisor(control, '/check-update') as SupervisorUpdateSnapshot
+}
+
+async function installUpdateViaSupervisor(): Promise<SupervisorUpdateSnapshot> {
+  const control = await readControl()
+  if (control === null) throw new Error('no supervisor control descriptor is available')
+  return await callSupervisor(control, '/install-update') as SupervisorUpdateSnapshot
+}
+
 function pluginCandidatesFromText(text: string): string[] {
   const candidates = new Set<string>()
   const patterns = [
@@ -491,6 +504,14 @@ async function route(request: IncomingMessage, response: ServerResponse, config:
     }
     if (pathname === '/dsh-supervisor/restart' && request.method === 'POST') {
       sendJson(response, 200, await restartViaSupervisor())
+      return
+    }
+    if (pathname === '/dsh-supervisor/check-update' && request.method === 'POST') {
+      sendJson(response, 200, await checkUpdateViaSupervisor())
+      return
+    }
+    if (pathname === '/dsh-supervisor/install-update' && request.method === 'POST') {
+      sendJson(response, 200, await installUpdateViaSupervisor())
       return
     }
     if (pathname === '/dsh-supervisor/diagnose' && request.method === 'POST') {
