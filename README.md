@@ -20,7 +20,7 @@ The first macOS channel is unsigned and unnotarized. Users must allow it manuall
 
 ## Updates
 
-Release builds publish two metadata files: `manifest.json` for DSH Web installation/download when the tray app is absent, and `latest.json` for the tray app's signed self-update flow. `0.1.0-dev.3` is the first build that contains updater code, so older `dev.2` installs must be replaced manually once; later builds can be checked and installed from the tray menu or the Settings → Desktop launch page. GitHub Actions requires `TAURI_SIGNING_PRIVATE_KEY`; `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is optional for password-protected keys.
+Release builds publish two metadata files: `manifest.json` for DSH Web installation/download when the tray app is absent, and `latest.json` for the tray app's signed self-update flow. `0.1.0-dev.3` is the first build that contains updater code, so older `dev.2` installs must be replaced manually once; later builds can be checked and installed from the tray menu or the Settings → Desktop launch page. From `0.1.0-dev.4`, the tray menu displays a native confirmation dialog before installing and relaunching the tray app. GitHub Actions requires `TAURI_SIGNING_PRIVATE_KEY`; `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is optional for password-protected keys.
 
 ## Local Checks
 

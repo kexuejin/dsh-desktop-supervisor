@@ -9,6 +9,7 @@ use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::AppHandle;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -339,6 +340,109 @@ fn install_update(app: AppHandle) -> Result<String, String> {
     .to_string())
 }
 
+fn show_dialog(app: &AppHandle, title: &str, message: impl Into<String>, kind: MessageDialogKind) {
+    app.dialog()
+        .message(message)
+        .title(title)
+        .kind(kind)
+        .blocking_show();
+}
+
+fn check_update_with_prompt(app: AppHandle) -> Result<(), String> {
+    let update = match tauri::async_runtime::block_on(async {
+        let updater = app.updater().map_err(|error| error.to_string())?;
+        updater.check().await.map_err(|error| error.to_string())
+    }) {
+        Ok(update) => update,
+        Err(error) => {
+            show_dialog(
+                &app,
+                "DSH Desktop Supervisor Update Failed",
+                &error,
+                MessageDialogKind::Error,
+            );
+            return Err(error);
+        }
+    };
+    let Some(update) = update else {
+        show_dialog(
+            &app,
+            "DSH Desktop Supervisor",
+            format!("You are already running the latest tray app ({VERSION})."),
+            MessageDialogKind::Info,
+        );
+        return Ok(());
+    };
+    let version = update.version.clone();
+    let message = format!(
+        "A signed tray app update is available: {version}.\n\nInstall it now and relaunch DSH Desktop Supervisor?"
+    );
+    let should_install = app
+        .dialog()
+        .message(message)
+        .title("DSH Desktop Supervisor Update")
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Install and Relaunch".to_string(),
+            "Not Now".to_string(),
+        ))
+        .blocking_show();
+    if !should_install {
+        return Ok(());
+    }
+    let install_result = tauri::async_runtime::block_on(async {
+        update
+            .download_and_install(|_, _| {}, || {})
+            .await
+            .map_err(|error| error.to_string())
+    });
+    match install_result {
+        Ok(()) => {
+            show_dialog(
+                &app,
+                "DSH Desktop Supervisor Update",
+                format!("Update {version} installed. The tray app will relaunch now."),
+                MessageDialogKind::Info,
+            );
+            app.request_restart();
+            Ok(())
+        }
+        Err(error) => {
+            show_dialog(
+                &app,
+                "DSH Desktop Supervisor Update Failed",
+                &error,
+                MessageDialogKind::Error,
+            );
+            Err(error)
+        }
+    }
+}
+
+fn install_update_with_prompt(app: AppHandle) -> Result<(), String> {
+    match install_update(app.clone()) {
+        Ok(_) => Ok(()),
+        Err(error) if error == "no update available" => {
+            show_dialog(
+                &app,
+                "DSH Desktop Supervisor",
+                format!("You are already running the latest tray app ({VERSION})."),
+                MessageDialogKind::Info,
+            );
+            Ok(())
+        }
+        Err(error) => {
+            show_dialog(
+                &app,
+                "DSH Desktop Supervisor Update Failed",
+                &error,
+                MessageDialogKind::Error,
+            );
+            Err(error)
+        }
+    }
+}
+
 fn serve(mut stream: TcpStream, token: &str, app: &AppHandle) {
     let Ok(request) = read_http_request(&mut stream) else {
         return;
@@ -448,6 +552,7 @@ fn main() {
         ensure_supervisor_paths().expect("supervisor descriptor directory must be writable");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             let port = start_control_server(paths.token.clone(), app.handle().clone())?;
@@ -493,13 +598,13 @@ fn main() {
             "check_update" => {
                 let app = app.clone();
                 thread::spawn(move || {
-                    let _ = check_update(&app);
+                    let _ = check_update_with_prompt(app);
                 });
             }
             "install_update" => {
                 let app = app.clone();
                 thread::spawn(move || {
-                    let _ = install_update(app);
+                    let _ = install_update_with_prompt(app);
                 });
             }
             "quit" => app.exit(0),

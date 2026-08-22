@@ -20,7 +20,7 @@ DSH Desktop Supervisor 是 DSH 的可选跨平台桌面伴随应用。它负责�
 
 ## 更新
 
-Release 会发布两个元数据文件：`manifest.json` 供未安装托盘 App 时在 DSH Web 内下载/打开安装包，`latest.json` 供托盘 App 走签名自更新。`0.1.0-dev.3` 是第一个包含 updater 代码的版本，因此旧的 `dev.2` 需要手动替换一次；之后的版本可从托盘菜单或“设置 → 桌面启动”里检查并安装。GitHub Actions 需要配置 `TAURI_SIGNING_PRIVATE_KEY`；如果私钥带密码，再配置可选的 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
+Release 会发布两个元数据文件：`manifest.json` 供未安装托盘 App 时在 DSH Web 内下载/打开安装包，`latest.json` 供托盘 App 走签名自更新。`0.1.0-dev.3` 是第一个包含 updater 代码的版本，因此旧的 `dev.2` 需要手动替换一次；之后的版本可从托盘菜单或“设置 → 桌面启动”里检查并安装。自 `0.1.0-dev.4` 起，托盘菜单安装更新前会显示原生确认弹窗，用户确认后才安装并重启托盘 App。GitHub Actions 需要配置 `TAURI_SIGNING_PRIVATE_KEY`；如果私钥带密码，再配置可选的 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
 
 ## 本地检查
 

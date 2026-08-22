@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop-supervisor",
   "description": "Optional Tauri tray supervisor for DSH startup and recovery",
-  "version": "0.1.0-dev.3",
+  "version": "0.1.0-dev.4",
   "publishConfig": {
     "access": "public"
   },
