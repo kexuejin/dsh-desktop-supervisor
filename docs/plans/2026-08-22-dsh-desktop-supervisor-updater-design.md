@@ -20,7 +20,7 @@ The tray app registers `tauri-plugin-updater` and exposes two token-authenticate
 - `POST /check-update` checks `latest.json` and returns whether a newer signed artifact is available.
 - `POST /install-update` repeats the check, downloads and verifies the selected artifact, installs it, and requests a tray-app relaunch.
 
-The tray menu includes “Check for Updates” and “Install Update and Relaunch”. From `0.1.0-dev.4`, a manual tray check shows a native dialog: up-to-date and error states are explicit, while available updates require user confirmation before install and relaunch. The Web companion proxies the same operations as `/dsh-supervisor/check-update` and `/dsh-supervisor/install-update`, so Settings → Desktop launch can operate the tray updater without exposing the token to browser code.
+The tray menu includes “Check for Updates” and “Install Update and Relaunch”. From `0.1.0-dev.4`, a manual tray check shows a native dialog: up-to-date and error states are explicit, while available updates require user confirmation before install and relaunch. From `0.1.0-dev.5`, the Settings entry renders its core actions immediately and refreshes tray status in the background instead of replacing the page with a loading state. The Web companion proxies the same operations as `/dsh-supervisor/check-update` and `/dsh-supervisor/install-update`, so Settings → Desktop launch can operate the tray updater without exposing the token to browser code.
 
 ## Compatibility
 

@@ -1,12 +1,12 @@
 {
   "name": "dsh-desktop-supervisor-workspace",
-  "version": "0.1.0-dev.4",
+  "version": "0.1.0-dev.5",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "scripts": {
     "typecheck": "pnpm --filter @deepseek-ai/dsh-supervisor-web exec tsc -b tsconfig.json",
-    "test": "pnpm exec vitest run packages/supervisor-web/tests/loader-composition.spec.ts",
+    "test": "pnpm exec vitest run packages/supervisor-web/tests",
     "bundle:web": "pnpm --filter @deepseek-ai/dsh-supervisor-web run bundle",
     "cargo:check": "cargo check --manifest-path app/src-tauri/Cargo.toml",
     "build:app": "pnpm --dir app run build",
@@ -14,7 +14,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/react-test-renderer": "^18.3.1",
     "lightningcss": "^1.30.2",
+    "react-test-renderer": "^18.3.1",
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"

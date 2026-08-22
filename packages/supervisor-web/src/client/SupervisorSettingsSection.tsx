@@ -18,10 +18,10 @@ export type SupervisorSettingsSectionProps =
   & PropsLocale<'supervisor.web'>
   & InjectFace<SupervisorSettingsSectionInjected>
 
-type ViewState =
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'ready'; snapshot: SupervisorStatusSnapshot }
+type RefreshState =
+  | { state: 'idle' }
+  | { state: 'refreshing' }
+  | { state: 'error'; message: string }
 
 type ActionStatus =
   | { state: 'idle' }
@@ -41,19 +41,27 @@ function trayStatus(snapshot: SupervisorStatusSnapshot, t: SupervisorSettingsSec
 
 export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps): ReactNode {
   const { status, restartDsh, download, openDownload, connect, checkUpdate, installUpdate, t } = props
-  const [state, setState] = useState<ViewState>({ status: 'loading' })
+  const [snapshot, setSnapshot] = useState<SupervisorStatusSnapshot | null>(null)
+  const [refreshState, setRefreshState] = useState<RefreshState>({ state: 'idle' })
   const [action, setAction] = useState<ActionStatus>({ state: 'idle' })
   const [update, setUpdate] = useState<SupervisorUpdateSnapshot | null>(null)
 
   const refresh = (): void => {
-    setState({ status: 'loading' })
+    setRefreshState({ state: 'refreshing' })
     void status().then(
-      (snapshot) => { setState({ status: 'ready', snapshot }) },
-      (error) => { setState({ status: 'error', message: errorMessage(error) }) },
+      (next) => {
+        setSnapshot(next)
+        setRefreshState({ state: 'idle' })
+      },
+      (error) => { setRefreshState({ state: 'error', message: errorMessage(error) }) },
     )
   }
 
-  useEffect(refresh, [status])
+  useEffect(() => {
+    refresh()
+    const timer = window.setInterval(refresh, 15_000)
+    return () => { window.clearInterval(timer) }
+  }, [status])
 
   const runRestart = (): void => {
     setAction({ state: 'working', message: t('restarting') })
@@ -100,34 +108,38 @@ export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps)
       () => status(),
     ).then(
       (next) => {
-        setState({ status: 'ready', snapshot: next })
+        setSnapshot(next)
+        setRefreshState({ state: 'idle' })
         setAction({ state: 'idle' })
       },
       (error) => { setAction({ state: 'error', message: errorMessage(error) }) },
     )
   }
 
-  if (state.status === 'loading') {
-    return <div className={css.section}>{t('loading')}</div>
-  }
-  if (state.status === 'error') {
-    return (
-      <div className={css.section}>
-        <p className={css.error}>{t('error')}: {state.message}</p>
-        <button className={css.secondaryButton} type="button" onClick={refresh}>{t('retry')}</button>
-      </div>
-    )
-  }
-
-  const snapshot = state.snapshot
   const busy = action.state === 'working'
-  const canUseTrayTool = snapshot.connected || snapshot.download.verified || snapshot.selected !== null
-  const trayButton = snapshot.connected ? t('connectTray') : snapshot.download.verified ? t('openTrayInstaller') : t('installTrayTool')
+  const canUseTrayTool = snapshot !== null && (snapshot.connected || snapshot.download.verified || snapshot.selected !== null)
+  const trayButton = snapshot === null
+    ? t('installTrayTool')
+    : snapshot.connected
+      ? t('connectTray')
+      : snapshot.download.verified
+        ? t('openTrayInstaller')
+        : t('installTrayTool')
+  const trayMessage = snapshot === null
+    ? refreshState.state === 'error'
+      ? t('trayStatusUnavailable')
+      : t('trayRefreshing')
+    : trayStatus(snapshot, t)
   const updateText = update === null ? null : update.available === true
     ? t('updateAvailable').replace('{version}', update.version ?? '')
     : update.installed === true
       ? t('updateInstalled')
       : t('updateCurrent')
+  const refreshMessage = refreshState.state === 'refreshing'
+    ? t('refreshing')
+    : refreshState.state === 'error'
+      ? `${t('error')}: ${refreshState.message}`
+      : null
 
   return (
     <div className={css.section}>
@@ -152,26 +164,27 @@ export function SupervisorSettingsSection(props: SupervisorSettingsSectionProps)
         <section className={css.tile}>
           <div>
             <h4>{t('trayTitle')}</h4>
-            <p>{trayStatus(snapshot, t)}</p>
+            <p>{trayMessage}</p>
           </div>
           <div className={css.inlineActions}>
-            <button className={css.secondaryButton} type="button" onClick={() => { runTrayTool(snapshot) }} disabled={busy || !canUseTrayTool}>
+            <button className={css.secondaryButton} type="button" onClick={() => { if (snapshot !== null) runTrayTool(snapshot) }} disabled={busy || !canUseTrayTool}>
               {trayButton}
             </button>
-            {snapshot.connected ? (
+            {snapshot?.connected === true ? (
               <button className={css.ghostButton} type="button" onClick={runCheckUpdate} disabled={busy}>
                 {t('checkUpdate')}
               </button>
             ) : null}
-            {snapshot.connected && update?.available === true ? (
+            {snapshot?.connected === true && update?.available === true ? (
               <button className={css.ghostButton} type="button" onClick={runInstallUpdate} disabled={busy}>
                 {t('installUpdate')}
               </button>
             ) : null}
-            <button className={css.ghostButton} type="button" onClick={refresh} disabled={busy}>
+            <button className={css.ghostButton} type="button" onClick={refresh} disabled={busy || refreshState.state === 'refreshing'}>
               {t('refresh')}
             </button>
           </div>
+          {refreshMessage !== null ? <p className={refreshState.state === 'error' ? css.error : css.status}>{refreshMessage}</p> : null}
           {updateText !== null ? <p className={css.status}>{updateText}</p> : null}
         </section>
       </div>
