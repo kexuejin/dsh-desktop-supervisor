@@ -79,6 +79,40 @@ export interface DownloadSnapshot {
   error: string | null
 }
 
+/** Launch facts captured from a running DSH Web process for external recovery. */
+export interface SupervisorLaunchDescriptor {
+  /** Descriptor schema version. */
+  schema: 1
+  /** Stable descriptor owner. */
+  app: 'dsh'
+  /** ISO timestamp when the descriptor was captured. */
+  capturedAt: string
+  /** Operating-system process id for the running DSH process. */
+  pid: number
+  /** Absolute Node executable path used by the running DSH process. */
+  execPath: string
+  /** Node execution arguments, such as tsx preload hooks. */
+  execArgv: string[]
+  /** Script or binary entry path from process.argv[1]. */
+  entry: string
+  /** Launcher arguments after the entry path. */
+  innerArgs: string[]
+  /** Full spawn argument list for a normal restart. */
+  args: string[]
+  /** Working directory of the running DSH process. */
+  cwd: string
+  /** Minimal non-secret environment needed to reproduce shell and DSH resolution. */
+  env: Record<string, string>
+  /** DSH profile selected for the running process. */
+  profile: string
+  /** Extra launcher patch overlays used for the running process. */
+  patches: string[]
+  /** App-level arguments passed through to the selected profile. */
+  appArgs: string[]
+  /** Local Web URL the desktop supervisor should open or probe first. */
+  webUrl: string
+}
+
 /** Complete status payload returned to the Desktop launch page. */
 export interface SupervisorStatusSnapshot {
   /** Last fetched release manifest, when available. */
@@ -89,6 +123,8 @@ export interface SupervisorStatusSnapshot {
   download: DownloadSnapshot
   /** Local desktop supervisor descriptor, when present and valid. */
   control: SupervisorControlDescriptor | null
+  /** Last normal DSH launch descriptor, when available. */
+  launch: SupervisorLaunchDescriptor | null
   /** Whether the descriptor's loopback health route answered successfully. */
   connected: boolean
   /** Reserved status-level error field for future supervisor probes. */

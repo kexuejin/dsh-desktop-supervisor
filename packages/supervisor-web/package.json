@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-supervisor-web",
   "description": "DSH Web companion for installing and pairing the optional desktop supervisor",
-  "version": "0.1.0-dev.1",
+  "version": "0.1.0-dev.2",
   "publishConfig": {
     "access": "public"
   },

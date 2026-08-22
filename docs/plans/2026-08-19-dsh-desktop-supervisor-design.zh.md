@@ -30,7 +30,7 @@ Release manifest 是持久选择源：
 {
   "schema": 1,
   "app": "dsh-desktop-supervisor",
-  "version": "0.1.0-dev.1",
+  "version": "0.1.0-dev.2",
   "channel": "developer",
   "artifacts": [
     {
@@ -38,7 +38,7 @@ Release manifest 是持久选择源：
       "arch": "arm64",
       "kind": "zip-app",
       "file": "dsh-supervisor-macos-arm64.zip",
-      "url": "https://github.com/owner/dsh-desktop-supervisor/releases/download/v0.1.0-dev.1/dsh-supervisor-macos-arm64.zip",
+      "url": "https://github.com/owner/dsh-desktop-supervisor/releases/download/v0.1.0-dev.2/dsh-supervisor-macos-arm64.zip",
       "sha256": "...",
       "signed": false,
       "notarized": false,
@@ -58,7 +58,7 @@ Host-side download 写入 `$DSH_HOME/downloads/desktop-supervisor/<version>/`，
 {
   "schema": 1,
   "app": "dsh-desktop-supervisor",
-  "version": "0.1.0-dev.1",
+  "version": "0.1.0-dev.2",
   "pid": 12345,
   "url": "http://127.0.0.1:47832",
   "tokenPath": "/Users/me/.dsh/supervisor/token",
@@ -72,7 +72,7 @@ Web 插件读取 `$DSH_HOME/supervisor/control.json`，加载 token path，并�
 
 - P0: Web 插件安装引导、manifest 下载、SHA-256 校验、打开下载制品、supervisor 探测、配对状态、Tauri 托盘骨架、control file 和 health/status API。
 - P1: Open DSH、restart、logs 和 quit 托盘控制。
-- P2: Safe Mode、启动失败解析、从 DSH 外部 row-level disable，以及 Last Known Good snapshots。
+- P2: 定点启动失败解析、从 DSH 外部 row-level disable，以及 Last Known Good snapshots。
 - P3: 签名/公证 release、updater、Windows/Linux installer polish 和 plugin bisection。
 
 ## Verification

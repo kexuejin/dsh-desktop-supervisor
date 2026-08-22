@@ -18,8 +18,8 @@ await run('sh', ['-c', `cd ${JSON.stringify(assets)} && shasum -a 256 * > ${JSON
 const out = join(release, 'manifest.json')
 await run('node', [
   'scripts/desktop-supervisor-manifest.mjs',
-  '--tag', 'v0.1.0-dev.1',
-  '--base-url', 'https://example.invalid/releases/download/v0.1.0-dev.1',
+  '--tag', 'v0.1.0-dev.2',
+  '--base-url', 'https://example.invalid/releases/download/v0.1.0-dev.2',
   '--assets-dir', assets,
   '--checksums', join(release, 'SHA256SUMS'),
   '--out', out,

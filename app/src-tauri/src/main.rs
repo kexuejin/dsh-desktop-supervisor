@@ -11,6 +11,34 @@ use tauri::tray::TrayIconBuilder;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const TRAY_ICON_RGBA: &[u8] = include_bytes!("../icons/tray-template.rgba");
+const PROTECTED_PLUGIN_IDS: &[&str] = &[
+    "@deepseek-ai/dsh-base",
+    "@deepseek-ai/dsh-web-app",
+    "@deepseek-ai/dsh-market",
+    "@deepseek-ai/dsh-supervisor-web",
+    "dsh-base",
+    "dsh-web-app",
+    "dsh-market",
+    "dsh-supervisor-web",
+];
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchDescriptor {
+    exec_path: String,
+    args: Vec<String>,
+    cwd: String,
+    env: serde_json::Map<String, serde_json::Value>,
+}
+
+impl LaunchDescriptor {
+    fn env_pairs(&self) -> Vec<(String, String)> {
+        self.env
+            .iter()
+            .filter_map(|(key, value)| value.as_str().map(|text| (key.clone(), text.to_string())))
+            .collect()
+    }
+}
 
 struct SupervisorPaths {
     root: PathBuf,
@@ -63,12 +91,203 @@ fn authorized(request: &str, token: &str) -> bool {
     })
 }
 
+fn content_length(header: &str) -> usize {
+    header
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            if name.eq_ignore_ascii_case("content-length") {
+                value.trim().parse::<usize>().ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0)
+}
+
+fn header_end_offset(bytes: &[u8]) -> Option<usize> {
+    bytes
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .map(|index| index + 4)
+}
+
+fn read_http_request(stream: &mut TcpStream) -> std::io::Result<String> {
+    let mut raw = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    let mut expected_total: Option<usize> = None;
+    loop {
+        let size = stream.read(&mut buffer)?;
+        if size == 0 {
+            break;
+        }
+        raw.extend_from_slice(&buffer[..size]);
+        if expected_total.is_none() {
+            if let Some(header_end) = header_end_offset(&raw) {
+                let header = String::from_utf8_lossy(&raw[..header_end]);
+                expected_total = Some(header_end + content_length(&header));
+            }
+        }
+        if let Some(total) = expected_total {
+            if raw.len() >= total {
+                break;
+            }
+        }
+        if raw.len() > 65_536 {
+            return Err(supervisor_error("HTTP request is too large"));
+        }
+    }
+    Ok(String::from_utf8_lossy(&raw).into_owned())
+}
+
+fn restart_dsh_web() -> std::io::Result<String> {
+    let mut stream = TcpStream::connect("127.0.0.1:3080")?;
+    let request = "POST /dsh-market/restart HTTP/1.1\r\nhost: 127.0.0.1:3080\r\norigin: http://127.0.0.1:3080\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+    stream.write_all(request.as_bytes())?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+    let status = response.lines().next().unwrap_or_default();
+    if status.contains(" 200 ") {
+        Ok(response)
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("DSH restart failed: {status}"),
+        ))
+    }
+}
+
+fn supervisor_error(message: impl Into<String>) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::Other, message.into())
+}
+
+fn read_launch_descriptor() -> std::io::Result<LaunchDescriptor> {
+    let path = dsh_home().join("supervisor").join("launch.json");
+    let text = fs::read_to_string(path)?;
+    serde_json::from_str(&text)
+        .map_err(|error| supervisor_error(format!("invalid launch descriptor: {error}")))
+}
+
+fn spawn_launch(launch: &LaunchDescriptor, args: &[String]) -> std::io::Result<()> {
+    let mut command = Command::new(&launch.exec_path);
+    command.args(args);
+    command.current_dir(&launch.cwd);
+    for (key, value) in launch.env_pairs() {
+        command.env(key, value);
+    }
+    command.spawn()?;
+    Ok(())
+}
+
+fn restart_from_launch_descriptor() -> std::io::Result<()> {
+    let launch = read_launch_descriptor()?;
+    spawn_launch(&launch, &launch.args)
+}
+
+fn disable_plugin_for_profile(
+    profile: &str,
+    plugin_id: &str,
+    reason: Option<&str>,
+) -> std::io::Result<()> {
+    if plugin_id.trim().is_empty() || plugin_id.chars().any(|ch| ch.is_control()) {
+        return Err(supervisor_error(
+            "plugin id must be a non-empty printable string",
+        ));
+    }
+    if PROTECTED_PLUGIN_IDS.contains(&plugin_id) {
+        return Err(supervisor_error(format!(
+            "refusing to disable protected DSH plugin {plugin_id}"
+        )));
+    }
+    let patch_path = dsh_home()
+        .join("profiles")
+        .join(profile)
+        .join("cordis.patch.yml");
+    if let Some(parent) = patch_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let existing = fs::read_to_string(&patch_path).unwrap_or_default();
+    let mut content = strip_empty_patch_document(&existing);
+    if !content.ends_with('\n') && !content.is_empty() {
+        content.push('\n');
+    }
+    content.push_str("\n# Disabled by DSH Desktop Supervisor recovery");
+    if let Some(reason) = reason {
+        let reason = reason.replace(['\r', '\n'], " ");
+        if !reason.trim().is_empty() {
+            content.push_str(": ");
+            content.push_str(reason.trim());
+        }
+    }
+    content.push_str("\n- id: ");
+    content.push_str(
+        &serde_json::to_string(plugin_id)
+            .map_err(|error| supervisor_error(format!("failed to quote plugin id: {error}")))?,
+    );
+    content.push_str("\n  disabled: true\n");
+    fs::write(patch_path, content)
+}
+
+fn strip_empty_patch_document(content: &str) -> String {
+    let mut meaningful = content.lines().filter(|line| {
+        let trimmed = line.trim();
+        !trimmed.is_empty() && !trimmed.starts_with('#')
+    });
+    if meaningful.next() == Some("[]") && meaningful.next().is_none() {
+        content
+            .lines()
+            .filter(|line| line.trim() != "[]")
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        content.to_string()
+    }
+}
+
+fn profile_from_launch(launch: &LaunchDescriptor) -> String {
+    if launch.args.first().map(String::as_str) == Some("web") {
+        return "web".to_string();
+    }
+    for pair in launch.args.windows(2) {
+        if pair[0] == "--profile" && !pair[1].is_empty() {
+            return pair[1].clone();
+        }
+    }
+    "web".to_string()
+}
+
+fn disable_plugin_from_request(body: &str) -> std::io::Result<String> {
+    let launch = read_launch_descriptor()?;
+    let value: serde_json::Value = serde_json::from_str(body)
+        .map_err(|error| supervisor_error(format!("invalid disable-plugin request: {error}")))?;
+    let plugin_id = value
+        .get("pluginId")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| supervisor_error("disable-plugin request requires pluginId"))?;
+    let reason = value.get("reason").and_then(serde_json::Value::as_str);
+    let profile = profile_from_launch(&launch);
+    disable_plugin_for_profile(&profile, plugin_id, reason)?;
+    Ok(format!(
+        "{{\"ok\":true,\"profile\":{},\"pluginId\":{}}}",
+        serde_json::to_string(&profile).unwrap_or_else(|_| "\"web\"".to_string()),
+        serde_json::to_string(plugin_id).unwrap_or_else(|_| "\"\"".to_string()),
+    ))
+}
+
+fn request_body(request: &str) -> &str {
+    request.split("\r\n\r\n").nth(1).unwrap_or_default()
+}
+
+fn restart_dsh() -> std::io::Result<()> {
+    restart_dsh_web()
+        .map(|_| ())
+        .or_else(|_| restart_from_launch_descriptor())
+}
+
 fn serve(mut stream: TcpStream, token: &str) {
-    let mut buffer = [0_u8; 2048];
-    let Ok(size) = stream.read(&mut buffer) else {
+    let Ok(request) = read_http_request(&mut stream) else {
         return;
     };
-    let request = String::from_utf8_lossy(&buffer[..size]);
     let first_line = request.lines().next().unwrap_or_default();
     let mut parts = first_line.split_whitespace();
     let method = parts.next().unwrap_or_default();
@@ -84,6 +303,26 @@ fn serve(mut stream: TcpStream, token: &str) {
         ),
         ("POST", "/pair") if authorized(&request, token) => respond(stream, "200 OK", "{\"ok\":true}"),
         ("POST", "/pair") => respond(stream, "401 Unauthorized", "{\"error\":\"unauthorized\"}"),
+        ("POST", "/restart") if authorized(&request, token) => match restart_dsh() {
+            Ok(_) => respond(stream, "200 OK", "{\"ok\":true}"),
+            Err(error) => respond(
+                stream,
+                "502 Bad Gateway",
+                &format!("{{\"error\":{}}}", serde_json::to_string(&error.to_string()).unwrap_or_else(|_| "\"restart failed\"".to_string())),
+            ),
+        },
+        ("POST", "/restart") => respond(stream, "401 Unauthorized", "{\"error\":\"unauthorized\"}"),
+        ("POST", "/disable-plugin") if authorized(&request, token) => {
+            match disable_plugin_from_request(request_body(&request)) {
+                Ok(body) => respond(stream, "200 OK", &body),
+                Err(error) => respond(
+                    stream,
+                    "400 Bad Request",
+                    &format!("{{\"error\":{}}}", serde_json::to_string(&error.to_string()).unwrap_or_else(|_| "\"disable plugin failed\"".to_string())),
+                ),
+            }
+        },
+        ("POST", "/disable-plugin") => respond(stream, "401 Unauthorized", "{\"error\":\"unauthorized\"}"),
         _ => respond(stream, "404 Not Found", "{\"error\":\"not found\"}"),
     }
 }
@@ -101,7 +340,7 @@ fn start_control_server(token: String) -> std::io::Result<u16> {
 
 fn write_control_file(paths: &SupervisorPaths, port: u16) -> std::io::Result<()> {
     let control = format!(
-        "{{\n  \"schema\": 1,\n  \"app\": \"dsh-desktop-supervisor\",\n  \"version\": \"{VERSION}\",\n  \"pid\": {},\n  \"url\": \"http://127.0.0.1:{port}\",\n  \"tokenPath\": {},\n  \"capabilities\": [\"status\", \"tray\", \"pair\"]\n}}\n",
+        "{{\n  \"schema\": 1,\n  \"app\": \"dsh-desktop-supervisor\",\n  \"version\": \"{VERSION}\",\n  \"pid\": {},\n  \"url\": \"http://127.0.0.1:{port}\",\n  \"tokenPath\": {},\n  \"capabilities\": [\"status\", \"tray\", \"pair\", \"restartDsh\", \"disablePlugin\"]\n}}\n",
         std::process::id(),
         serde_json::to_string(&paths.token_path.to_string_lossy()).unwrap_or_else(|_| "\"\"".to_string()),
     );
@@ -138,8 +377,9 @@ fn main() {
                 app.set_dock_visibility(false);
             }
             let open = MenuItem::with_id(app, "open", "Open DSH Web", true, None::<&str>)?;
+            let restart = MenuItem::with_id(app, "restart", "Restart DSH", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &quit])?;
+            let menu = Menu::with_items(app, &[&open, &restart, &quit])?;
             let tray_icon = Image::new(TRAY_ICON_RGBA, 32, 32);
             let tray = TrayIconBuilder::new()
                 .menu(&menu)
@@ -153,6 +393,9 @@ fn main() {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => {
                 let _ = open_dsh_web();
+            }
+            "restart" => {
+                let _ = restart_dsh();
             }
             "quit" => app.exit(0),
             _ => {}

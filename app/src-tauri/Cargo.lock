@@ -672,8 +672,9 @@ dependencies = [
 
 [[package]]
 name = "dsh-desktop-supervisor"
-version = "0.1.0-dev.1"
+version = "0.1.0-dev.2"
 dependencies = [
+ "serde",
  "serde_json",
  "tauri",
  "tauri-build",

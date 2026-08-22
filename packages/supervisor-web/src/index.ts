@@ -2,13 +2,13 @@ import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
-import { createWriteStream } from 'node:fs'
+import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs'
 import { mkdir, readFile, stat } from 'node:fs/promises'
 import { request as requestHttp } from 'node:http'
 import { request as requestSecure } from 'node:https'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import z from '@deepseek-ai/schemastery'
-import type { SupervisorArtifact, SupervisorControlDescriptor, SupervisorManifest, SupervisorStatusSnapshot, DownloadSnapshot } from './types.ts'
+import type { SupervisorArtifact, SupervisorControlDescriptor, SupervisorLaunchDescriptor, SupervisorManifest, SupervisorStatusSnapshot, DownloadSnapshot } from './types.ts'
 
 interface WebServerService {
   register(route: {
@@ -26,6 +26,17 @@ interface HostContext {
 const DEFAULT_MANIFEST_URL = 'https://github.com/kexuejin/dsh-desktop-supervisor/releases/latest/download/manifest.json'
 const USER_AGENT = 'dsh-supervisor-web'
 const MAX_REDIRECTS = 5
+const ENV_KEYS = ['DSH_HOME', 'PATH', 'NODE_PATH', 'NVM_BIN', 'NVM_DIR', 'PNPM_HOME'] as const
+const PROTECTED_PLUGIN_IDS = new Set([
+  '@deepseek-ai/dsh-base',
+  '@deepseek-ai/dsh-web-app',
+  '@deepseek-ai/dsh-market',
+  '@deepseek-ai/dsh-supervisor-web',
+  'dsh-base',
+  'dsh-web-app',
+  'dsh-market',
+  'dsh-supervisor-web',
+])
 
 /** Host route configuration for the desktop supervisor Web companion. */
 export interface Config {
@@ -255,6 +266,80 @@ async function downloadSelected(config: Required<Config>): Promise<DownloadSnaps
   return downloadSnapshot
 }
 
+function selectedProfile(args: readonly string[]): string {
+  if (args[0] === 'web') return 'web'
+  const index = args.indexOf('--profile')
+  const profile = index >= 0 ? args[index + 1] : undefined
+  return profile === undefined || profile === '' ? 'web' : profile
+}
+
+function launcherPatches(args: readonly string[]): string[] {
+  const patches: string[] = []
+  for (let index = 0; index < args.length; index += 1) {
+    const next = args[index + 1]
+    if (args[index] === '--patch' && next !== undefined) patches.push(next)
+  }
+  return patches
+}
+
+function appArgs(args: readonly string[]): string[] {
+  const profile = selectedProfile(args)
+  if (args[0] === 'web') return args.slice(1).filter((arg, index, rest) => arg !== '--patch' && rest[index - 1] !== '--patch')
+  const profileIndex = args.indexOf('--profile')
+  const firstAppArg = profileIndex >= 0 ? profileIndex + 2 : 0
+  return profile === 'web' ? args.slice(firstAppArg).filter((arg, index, rest) => arg !== '--patch' && rest[index - 1] !== '--patch') : args.slice(firstAppArg)
+}
+
+function captureEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const key of ENV_KEYS) {
+    const value = process.env[key]
+    if (value !== undefined && value !== '') env[key] = value
+  }
+  return env
+}
+
+function captureLaunchDescriptor(): SupervisorLaunchDescriptor {
+  const entry = process.argv[1] ?? ''
+  const innerArgs = process.argv.slice(2)
+  return {
+    schema: 1,
+    app: 'dsh',
+    capturedAt: new Date().toISOString(),
+    pid: process.pid,
+    execPath: process.execPath,
+    execArgv: [...process.execArgv],
+    entry,
+    innerArgs,
+    args: [...process.execArgv, entry, ...innerArgs].filter((arg) => arg !== ''),
+    cwd: process.cwd(),
+    env: captureEnv(),
+    profile: selectedProfile(innerArgs),
+    patches: launcherPatches(innerArgs),
+    appArgs: appArgs(innerArgs),
+    webUrl: 'http://127.0.0.1:3080',
+  }
+}
+
+function writeLaunchDescriptor(): void {
+  const launch = captureLaunchDescriptor()
+  const supervisorRoot = dshHomePath('supervisor')
+  mkdirSync(supervisorRoot, { recursive: true })
+  writeFileSync(join(supervisorRoot, 'launch.json'), `${JSON.stringify(launch, null, 2)}\n`)
+}
+
+async function readLaunchDescriptor(): Promise<SupervisorLaunchDescriptor | null> {
+  try {
+    const text = await readFile(dshHomePath('supervisor', 'launch.json'), 'utf8')
+    const value = JSON.parse(text) as SupervisorLaunchDescriptor
+    if (value.schema !== 1 || value.app !== 'dsh') return null
+    return value
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
+    throw error
+  }
+}
+
 async function readControl(): Promise<SupervisorControlDescriptor | null> {
   try {
     const text = await readFile(dshHomePath('supervisor', 'control.json'), 'utf8')
@@ -282,21 +367,74 @@ async function supervisorHealth(control: SupervisorControlDescriptor): Promise<b
 
 async function statusSnapshot(config: Required<Config>): Promise<SupervisorStatusSnapshot> {
   const control = await readControl()
+  const launch = await readLaunchDescriptor()
   const { manifest, selected, error } = await installerSelection(config)
   return {
     manifest,
     selected,
     download: downloadSnapshot,
     control,
+    launch,
     connected: control === null ? false : await supervisorHealth(control),
     error,
   }
 }
 
-async function connectSupervisor(control: SupervisorControlDescriptor): Promise<unknown> {
+async function callSupervisor(control: SupervisorControlDescriptor, path: string, body?: string): Promise<unknown> {
   const token = await readToken(control)
-  const url = new URL('/pair', control.url).toString()
-  return JSON.parse(await requestText(url, { method: 'POST', headers: { authorization: `Bearer ${token}` } })) as unknown
+  const url = new URL(path, control.url).toString()
+  const headers: Record<string, string> = { authorization: `Bearer ${token}` }
+  if (body !== undefined) {
+    headers['content-type'] = 'application/json'
+    headers['content-length'] = String(Buffer.byteLength(body))
+  }
+  const options: TextRequestOptions = { method: 'POST', headers }
+  if (body !== undefined) options.body = body
+  return JSON.parse(await requestText(url, options)) as unknown
+}
+
+async function connectSupervisor(control: SupervisorControlDescriptor): Promise<unknown> {
+  return await callSupervisor(control, '/pair')
+}
+
+async function restartViaSupervisor(): Promise<unknown> {
+  const control = await readControl()
+  if (control === null) return JSON.parse(await requestText('http://127.0.0.1:3080/dsh-market/restart', { method: 'POST', headers: { origin: 'http://127.0.0.1:3080' } })) as unknown
+  return await callSupervisor(control, '/restart')
+}
+
+function pluginCandidatesFromText(text: string): string[] {
+  const candidates = new Set<string>()
+  const patterns = [
+    /(?:plugin|bundle|row|id)\s+["'`]([^"'`\s]+)["'`]/gi,
+    /(?:cannot resolve profile bundle|profile bundle)\s+["'`]([^"'`\s]+)["'`]/gi,
+    /@deepseek-ai\/dsh-[\w-]+|@[\w-]+\/[\w-]+|dsh-[\w-]+/g,
+  ]
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const value = (match[1] ?? match[0]).trim()
+      if ((value.length > 0 && !value.includes('/')) || value.startsWith('@') || value.startsWith('dsh-')) candidates.add(value)
+    }
+  }
+  return [...candidates].filter((candidate) => !PROTECTED_PLUGIN_IDS.has(candidate))
+}
+
+async function readRequestBody(request: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = []
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+async function disablePluginViaSupervisor(pluginId: string, reason: string | undefined): Promise<unknown> {
+  const control = await readControl()
+  if (control === null) throw new Error('no supervisor control descriptor is available')
+  return await callSupervisor(control, '/disable-plugin', JSON.stringify({ pluginId, reason }))
+}
+
+function parseJsonBody(text: string): Record<string, unknown> {
+  const value = JSON.parse(text) as unknown
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('request body must be a JSON object')
+  return value as Record<string, unknown>
 }
 
 function openPath(path: string): void {
@@ -351,6 +489,27 @@ async function route(request: IncomingMessage, response: ServerResponse, config:
       sendJson(response, 200, await connectSupervisor(control))
       return
     }
+    if (pathname === '/dsh-supervisor/restart' && request.method === 'POST') {
+      sendJson(response, 200, await restartViaSupervisor())
+      return
+    }
+    if (pathname === '/dsh-supervisor/diagnose' && request.method === 'POST') {
+      const body = parseJsonBody(await readRequestBody(request))
+      const text = typeof body.text === 'string' ? body.text : ''
+      sendJson(response, 200, { candidates: pluginCandidatesFromText(text) })
+      return
+    }
+    if (pathname === '/dsh-supervisor/disable-plugin' && request.method === 'POST') {
+      const body = parseJsonBody(await readRequestBody(request))
+      const pluginId = typeof body.pluginId === 'string' ? body.pluginId : ''
+      if (pluginId.length === 0) {
+        sendJson(response, 400, { error: 'pluginId is required' })
+        return
+      }
+      const reason = typeof body.reason === 'string' ? body.reason : undefined
+      sendJson(response, 200, await disablePluginViaSupervisor(pluginId, reason))
+      return
+    }
     response.writeHead(404)
     response.end()
   } catch (error) {
@@ -366,6 +525,7 @@ export function apply(ctx: HostContext, config: Config = {}): void {
     manifestUrl: config.manifestUrl ?? DEFAULT_MANIFEST_URL,
     localArtifactPath: config.localArtifactPath ?? '',
   }
+  writeLaunchDescriptor()
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: '/dsh-supervisor',

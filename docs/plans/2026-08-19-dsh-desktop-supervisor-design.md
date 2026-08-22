@@ -30,7 +30,7 @@ The Release manifest is the durable selection source:
 {
   "schema": 1,
   "app": "dsh-desktop-supervisor",
-  "version": "0.1.0-dev.1",
+  "version": "0.1.0-dev.2",
   "channel": "developer",
   "artifacts": [
     {
@@ -38,7 +38,7 @@ The Release manifest is the durable selection source:
       "arch": "arm64",
       "kind": "zip-app",
       "file": "dsh-supervisor-macos-arm64.zip",
-      "url": "https://github.com/owner/dsh-desktop-supervisor/releases/download/v0.1.0-dev.1/dsh-supervisor-macos-arm64.zip",
+      "url": "https://github.com/owner/dsh-desktop-supervisor/releases/download/v0.1.0-dev.2/dsh-supervisor-macos-arm64.zip",
       "sha256": "...",
       "signed": false,
       "notarized": false,
@@ -58,7 +58,7 @@ The desktop app writes:
 {
   "schema": 1,
   "app": "dsh-desktop-supervisor",
-  "version": "0.1.0-dev.1",
+  "version": "0.1.0-dev.2",
   "pid": 12345,
   "url": "http://127.0.0.1:47832",
   "tokenPath": "/Users/me/.dsh/supervisor/token",
@@ -72,7 +72,7 @@ The Web plugin reads `$DSH_HOME/supervisor/control.json`, loads the token path, 
 
 - P0: Web plugin install guide, manifest download, SHA-256 verification, open downloaded artifact, supervisor probe, pairing status, Tauri tray skeleton, control file, and health/status API.
 - P1: tray controls for Open DSH, restart, logs, and quit.
-- P2: Safe Mode, startup failure parsing, row-level disable from outside DSH, and Last Known Good snapshots.
+- P2: targeted startup-failure parsing, row-level disable from outside DSH, and Last Known Good snapshots.
 - P3: signed/notarized releases, updater, Windows/Linux installer polish, and plugin bisection.
 
 ## Verification
